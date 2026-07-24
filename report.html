@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><title>Дипломная работа!</title>
+<style>
+body{background:#0d1117;color:#e6edf3;font-family:'Segoe UI',sans-serif;padding:40px;max-width:1100px;margin:0 auto;line-height:1.6;}
+h1{color:#58a6ff;border-bottom:2px solid #21262d;padding-bottom:12px;font-size:24px;}
+h2{color:#3fb950;margin-top:32px;font-size:16px;text-transform:uppercase;letter-spacing:1px;}
+.meta-box{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:20px;margin:20px 0;display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.meta-row{display:flex;gap:12px;}
+.meta-key{color:#6e7681;font-size:12px;min-width:120px;}
+.meta-val{color:#e6edf3;font-size:12px;}
+.section{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:20px;margin:20px 0;}
+.stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:12px 0;}
+.stat-card{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:14px;}
+.stat-num{font-size:32px;font-weight:bold;margin-bottom:4px;}
+.stat-lbl{color:#6e7681;font-size:11px;text-transform:uppercase;letter-spacing:1px;}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px;}
+th{background:#21262d;color:#6e7681;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;}
+td{padding:7px 10px;border-bottom:1px solid #161b22;}
+tr:hover td{background:#1c2128;}
+.critical{color:#f85149;} .high{color:#d29922;} .medium{color:#58a6ff;} .low{color:#3fb950;}
+.empty{color:#484f58;font-style:italic;padding:20px;text-align:center;}
+.footer{color:#484f58;font-size:11px;text-align:center;margin-top:40px;border-top:1px solid #21262d;padding-top:16px;}
+</style></head><body>
+<h1>Дипломная работа!</h1>
+<div class="meta-box">
+<div class="meta-row"><span class="meta-key">Аналитик</span><span class="meta-val">Максим Андреев 08.06</span></div>
+<div class="meta-row"><span class="meta-key">Организация</span><span class="meta-val">BarysGuard</span></div>
+<div class="meta-row"><span class="meta-key">Дата формирования</span><span class="meta-val">2026-06-08 16:32:24</span></div>
+<div class="meta-row"><span class="meta-key">Инструмент</span><span class="meta-val">BarysGuard</span></div>
+</div>
+
+<h2>Статистика сессии</h2>
+<div class="section">
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-num" style="color:#58a6ff">9</div><div class="stat-lbl">Hash Lookups</div></div>
+<div class="stat-card"><div class="stat-num" style="color:#f85149">1</div><div class="stat-lbl">Malicious</div></div>
+<div class="stat-card"><div class="stat-num" style="color:#d29922">11</div><div class="stat-lbl">YARA Hits</div></div>
+<div class="stat-card"><div class="stat-num" style="color:#3fb950">0</div><div class="stat-lbl">IOC Runs</div></div>
+<div class="stat-card"><div class="stat-num" style="color:#3fb950">1</div><div class="stat-lbl">Net Checks</div></div>
+<div class="stat-card"><div class="stat-num" style="color:#f85149">0</div><div class="stat-lbl">High Risk IPs</div></div>
+</div>
+</div>
+
+<h2>Распределение угроз</h2>
+<div class="section"><table>
+<tr><th>Уровень</th><th>График</th><th>Количество</th></tr>
+<tr><td style="color:#f85149;font-weight:bold">Critical</td><td><div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><div style="width:0px;height:12px;background:#f85149;border-radius:3px;min-width:2px"></div><span style="color:#f85149;font-weight:bold">0</span></div></td><td style="color:#f85149">0</td></tr>
+<tr><td style="color:#d29922;font-weight:bold">High</td><td><div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><div style="width:200px;height:12px;background:#d29922;border-radius:3px;min-width:2px"></div><span style="color:#d29922;font-weight:bold">1</span></div></td><td style="color:#d29922">1</td></tr>
+<tr><td style="color:#58a6ff;font-weight:bold">Medium</td><td><div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><div style="width:0px;height:12px;background:#58a6ff;border-radius:3px;min-width:2px"></div><span style="color:#58a6ff;font-weight:bold">0</span></div></td><td style="color:#58a6ff">0</td></tr>
+<tr><td style="color:#3fb950;font-weight:bold">Low</td><td><div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><div style="width:0px;height:12px;background:#3fb950;border-radius:3px;min-width:2px"></div><span style="color:#3fb950;font-weight:bold">0</span></div></td><td style="color:#3fb950">0</td></tr>
+
+</table></div><h2>YARA Детекты (1)</h2>
+<div class="section"><table>
+<tr><th>Время</th><th>Severity</th><th>Событие</th></tr>
+<tr><td>16:30:26</td><td style="color:#8b949e"></td><td>⚠ 147 совп. — TEST (192.168.1.67) (147 записей)</td></tr>
+</table></div><h2>Hash Lookup (1)</h2>
+<div class="section"><table>
+<tr><th>Время</th><th>Результат</th></tr>
+<tr><td>16:29:37</td><td style="color:#f85149">eicar.com.txt — MALICIOUS (41/75)</td></tr>
+</table></div><h2>Network Intelligence (1)</h2>
+<div class="section"><table>
+<tr><th>Цель</th><th>Результат</th></tr>
+<tr><td>52.123.168.129</td><td style="color:#3fb950">52.123.168.129 — score 0/100</td></tr>
+</table></div><h2>Удалённые сканы (162)</h2><div class="section"><table><tr><th>Время</th><th>Хост</th><th>Тип</th><th>Правило / Файл</th></tr><tr><td>16:30:22</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#8b949e">SCAN</td><td>Файловый скан запущен — TEST (192.168.1.67) | C:\Users</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — agent (PID:20988) C:\Users\User\Desktop\BarysGuard\BarysGuard\agent\dist\agent.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — agent (PID:24520) C:\Users\User\Desktop\BarysGuard\BarysGuard\agent\dist\agent.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs64 (PID:13276) D:\steam\steamapps\common\OBS Studio\bin\64bit\obs64.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:2308) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:4020) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:5052) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:10068) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:13428) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:17100) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:20896) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-browser-page (PID:23228) D:\steam\steamapps\common\OBS Studio\obs-plugins\64bit\obs-browser-page.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — obs-ffmpeg-mux (PID:19316) D:\steam\steamapps\common\OBS Studio\bin\64bit\obs-ffmpeg-mux.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — OneDrive.Sync.Service (PID:21608) C:\Users\User\AppData\Local\Microsoft\OneDrive\26.084.0504.0007\OneDrive.Sync.Service.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — pg_ctl (PID:6004) D:\postgre\bin\pg_ctl.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10320) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10764) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10824) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10832) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10840) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10852) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:10868) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:11028) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:11088) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — postgres (PID:11104) D:\postgre\bin\postgres.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — python (PID:12684) C:\Python313\python.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — python (PID:22236) C:\Python313\python.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — RobloxCrashHandler (PID:23984) C:\Users\User\AppData\Local\Roblox\Versions\version-6776addb8fbc4d17\RobloxCrashHandler.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — RobloxPlayerBeta (PID:22960) C:\Users\User\AppData\Local\Roblox\Versions\version-6776addb8fbc4d17\RobloxPlayerBeta.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steam (PID:24604) D:\steam\Steam.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:840) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:2508) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:3860) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:8788) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:9816) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:10564) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — steamwebhelper (PID:14712) D:\steam\bin\cef\cef.win64\steamwebhelper.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — Telegram (PID:13256) D:\Telegram Desktop\Telegram.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:936) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:5652) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:10896) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:11832) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:20924) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Suspicious process — ������ ��몠 (PID:21100) C:\Users\User\AppData\Local\Programs\YandexMusic\������ ��몠.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidmsrv → ::1:49677</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidmsrv → ::1:49678</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — lktsrv → ::1:49674</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — lktsrv → ::1:49675</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — lkads → ::1:49670</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — lkads → ::1:49671</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ms-teams → 52.123.168.129:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49684</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49715</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:54963</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:54964</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — msedgewebview2 → 52.123.168.137:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ArmouryCrate.Service → 127.0.0.1:49810</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ArmourySocketServer → 127.0.0.1:1042</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ArmouryCrate.UserSessionHelper → 127.0.0.1:50100</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:49787</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:49788</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49695</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:49768</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:49769</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49679</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49765</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49766</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — lkads → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niDiscSvc → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niDiscSvc → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niDiscSvc → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niDiscSvc → 127.0.0.1:49688</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ROGLiveService → 127.0.0.1:13030</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49716</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49717</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:61900</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:49713</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nidevldu → 127.0.0.1:49714</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49711</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49712</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49709</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:49710</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niDiscSvc → 127.0.0.1:49786</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49725</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49730</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49745</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49727</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49723</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimdnsResponder → 127.0.0.1:49722</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:61900</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49682</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — niroco → 127.0.0.1:49683</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:49680</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:49681</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:49767</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — svchost → 98.66.133.184:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — RobloxPlayerBeta → 128.116.5.3:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — RobloxPlayerBeta → 128.116.5.3:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — Telegram → 149.154.167.41:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — steam → 155.133.229.4:27021</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — RobloxPlayerBeta → 128.116.5.3:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — steamwebhelper → 127.0.0.1:26487</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — steamwebhelper → 127.0.0.1:26488</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:39774</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nipxism → 127.0.0.1:39775</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — browser → 213.180.193.234:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — python → 34.54.88.138:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — python → 192.168.1.67:5555</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ������ ��몠 → 87.250.251.15:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ������ ��몠 → 77.88.44.55:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 142.250.154.100:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ������ ��몠 → 95.57.54.229:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — msedgewebview2 → 20.50.80.214:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — steam → 127.0.0.1:46126</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — steam → 127.0.0.1:46127</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — AcPowerNotification → 127.0.0.1:1042</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — browser → 213.180.193.234:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — browser → 213.180.204.179:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ROGLiveService → 127.0.0.1:49718</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — browser → 45.138.0.2:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:9970</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — nimxs → 127.0.0.1:9971</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ArmouryCrate.UserSessionHelper → 127.0.0.1:9012</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — ArmourySocketServer → 127.0.0.1:9966</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — agent → 192.168.1.67:28716</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 95.129.237.38:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 87.250.250.119:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 95.129.237.38:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 87.250.250.119:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 95.129.237.38:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs-browser-page → 87.250.250.119:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs64 → 37.59.185.111:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — obs64 → 37.59.185.111:443</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — asus_framework → 127.0.0.1:49857</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Connection — asus_framework → 127.0.0.1:23915</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — SecurityHealth = C:\WINDOWS\system32\SecurityHealthSystray.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — OneDrive = "C:\Users\User\AppData\Local\Microsoft\OneDrive\OneDrive.exe" /background</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Steam = "D:\steam\steam.exe" -silent</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Discord = "C:\Users\User\AppData\Local\Discord\Update.exe" --processStart Discord.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — NIRegistrationWizard = C:\Program Files (x86)\National Instruments\Shared\RegistrationWizard\Bin\RegistrationWizard.exe -autoDiscover 1 -displayIfNoneFound 0 -displayRegisterOptions 1 -sleepIfNoneFound 0 -locale 9</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Microsoft.Lists = C:\Users\User\AppData\Local\Microsoft\OneDrive\26.084.0504.0007\OneDrive.Sync.Service.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — NVIDIA Broadcast  = C:\Program Files\NVIDIA Corporation\NVIDIA Broadcast\NVIDIA Broadcast.exe --process-start-args "--launch-hidden"</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Docker Desktop = C:\Program Files\Docker\Docker\Docker Desktop.exe</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Teams = "C:\Users\User\AppData\Local\Microsoft\WindowsApps\MSTeams_8wekyb3d8bbwe\ms-teams.exe" msteams:system-initiated</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — Spotify = C:\Users\User\AppData\Roaming\Spotify\Spotify.exe --autostart --minimized</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — RobloxPlayerBeta = "C:\Users\User\AppData\Local\Roblox\Versions\version-6776addb8fbc4d17\RobloxPlayerBeta.exe" --launch-to-tray</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#d29922">IOC</td><td>Autorun — YandexBrowserAutoLaunch_B64B7D5D07784CD66F00CA43360BB68B = "C:\Program Files\Yandex\YandexBrowser\Application\browser.exe" --no-startup-window --atlogin-bgr-mark /prefetch:5</td></tr>
+<tr><td>16:30:26</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#58a6ff">YARA</td><td>⚠ 147 совп. — TEST (192.168.1.67) (147 записей)</td></tr>
+<tr><td>16:31:01</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Memory Scan запущен — TEST (192.168.1.67) | 2 правил</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [browser.exe] 13532</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [NVIDIA Overlay.exe] 17120</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [msedgewebview2.exe] 17212</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [msedgewebview2.exe] 19260</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [browser.exe] 19592</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Sliver_C2_Framework — [python.exe] 22236</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [python.exe] 22236</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [msedgewebview2.exe] 22952</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [msedgewebview2.exe] 23608</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Sliver_C2_Framework — [agent.exe] 24520</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>Havoc_C2_Framework — [agent.exe] 24520</td></tr>
+<tr><td>16:31:46</td><td style="color:#58a6ff">TEST (192.168.1.67)</td><td style="color:#a371f7">MEMORY</td><td>⚠ 11 совп. — TEST (192.168.1.67) (11 записей)</td></tr>
+</table></div><h2>YARA База правил</h2>
+<div class="section"><table>
+<tr><th>Правило</th><th>Severity</th><th>Описание</th></tr>
+<tr><td>Mimikatz</td><td class="critical">CRITICAL</td><td>Detects Mimikatz credential dumper</td></tr>
+<tr><td>Meterpreter</td><td class="critical">CRITICAL</td><td>Detects Metasploit Meterpreter shellcode patterns</td></tr>
+<tr><td>CobaltStrike</td><td class="critical">CRITICAL</td><td>Detects Cobalt Strike Beacon artifacts</td></tr>
+<tr><td>PowerShell_Encoded</td><td class="high">HIGH</td><td>Detects PowerShell encoded/obfuscated execution</td></tr>
+<tr><td>Ransomware_Generic</td><td class="critical">CRITICAL</td><td>Generic ransomware behavioral indicators</td></tr>
+<tr><td>WannaCry</td><td class="critical">CRITICAL</td><td>Detects WannaCry / WannaCrypt ransomware</td></tr>
+<tr><td>Emotet</td><td class="critical">CRITICAL</td><td>Detects Emotet banking trojan indicators</td></tr>
+<tr><td>AgentTesla</td><td class="high">HIGH</td><td>Detects Agent Tesla keylogger/stealer</td></tr>
+<tr><td>Njrat</td><td class="high">HIGH</td><td>Detects NjRat Remote Access Trojan</td></tr>
+<tr><td>Keylogger_Generic</td><td class="high">HIGH</td><td>Generic keylogger API usage patterns</td></tr>
+<tr><td>ProcessInjection</td><td class="high">HIGH</td><td>Detects common process injection API patterns</td></tr>
+<tr><td>DLL_Sideloading</td><td class="medium">MEDIUM</td><td>Detects potential DLL sideloading artifacts</td></tr>
+<tr><td>WebShell_PHP</td><td class="high">HIGH</td><td>Detects PHP web shells</td></tr>
+<tr><td>Suspicious_Office_Macro</td><td class="medium">MEDIUM</td><td>Detects potentially malicious Office macros</td></tr>
+<tr><td>Network_Recon</td><td class="medium">MEDIUM</td><td>Detects network reconnaissance tool signatures</td></tr>
+<tr><td>Credential_Harvesting</td><td class="high">HIGH</td><td>Detects credential harvesting patterns</td></tr>
+<tr><td>Persistence_Registry</td><td class="medium">MEDIUM</td><td>Detects registry-based persistence mechanisms</td></tr>
+<tr><td>UAC_Bypass</td><td class="high">HIGH</td><td>Detects common UAC bypass techniques</td></tr>
+<tr><td>Lateral_Movement</td><td class="high">HIGH</td><td>Detects lateral movement via SMB/WMI</td></tr>
+<tr><td>Anti_Analysis</td><td class="medium">MEDIUM</td><td>Detects anti-debugging and anti-analysis techniques</td></tr>
+<tr><td>EICAR_Test</td><td class="low">LOW</td><td>Detects EICAR antivirus test file</td></tr>
+<tr><td>LockBit</td><td class="critical">CRITICAL</td><td>Detects LockBit ransomware artifacts</td></tr>
+<tr><td>BlackCat_ALPHV</td><td class="critical">CRITICAL</td><td>Detects BlackCat/ALPHV ransomware</td></tr>
+<tr><td>RedLine_Stealer</td><td class="critical">CRITICAL</td><td>Detects RedLine credential stealer</td></tr>
+<tr><td>AsyncRAT</td><td class="high">HIGH</td><td>Detects AsyncRAT remote access trojan</td></tr>
+<tr><td>QuasarRAT</td><td class="high">HIGH</td><td>Detects Quasar RAT artifacts</td></tr>
+<tr><td>Remcos_RAT</td><td class="high">HIGH</td><td>Detects Remcos Remote Control software used maliciously</td></tr>
+<tr><td>GuLoader</td><td class="high">HIGH</td><td>Detects GuLoader/CloudEyE malware downloader</td></tr>
+<tr><td>Log4Shell_CVE_2021_44228</td><td class="critical">CRITICAL</td><td>Detects Log4Shell CVE-2021-44228 exploitation attempts</td></tr>
+<tr><td>WebShell_ASPX</td><td class="high">HIGH</td><td>Detects ASPX/ASP.NET web shells</td></tr>
+<tr><td>LOLBins_Abuse</td><td class="medium">MEDIUM</td><td>Detects abuse of legitimate Windows binaries for malicious purposes</td></tr>
+<tr><td>Packed_UPX</td><td class="low">LOW</td><td>Detects UPX-packed executables</td></tr>
+<tr><td>Reverse_Shell_Linux</td><td class="high">HIGH</td><td>Detects Linux reverse shell patterns</td></tr>
+<tr><td>Credential_Files_Access</td><td class="high">HIGH</td><td>Detects access to sensitive credential storage files</td></tr>
+<tr><td>Scheduled_Task_Abuse</td><td class="medium">MEDIUM</td><td>Detects scheduled task-based persistence</td></tr>
+<tr><td>DefenderTampering</td><td class="high">HIGH</td><td>Detects attempts to disable or tamper with Windows Defender</td></tr>
+<tr><td>AMSI_Bypass</td><td class="high">HIGH</td><td>Detects AMSI (Antimalware Scan Interface) bypass techniques</td></tr>
+<tr><td>Vidar_Stealer</td><td class="critical">CRITICAL</td><td>Detects Vidar information stealer</td></tr>
+<tr><td>Chisel_Tunnel</td><td class="medium">MEDIUM</td><td>Detects Chisel network tunneling tool used in attacks</td></tr>
+<tr><td>Sliver_C2</td><td class="critical">CRITICAL</td><td>Detects Sliver C2 framework implants</td></tr>
+<tr><td>Havoc_C2</td><td class="critical">CRITICAL</td><td>Detects Havoc C2 framework demon implants</td></tr>
+</table></div><div class="footer">Сформировано: 2026-06-08 16:32:24 | BarysGuard | BarysGuard</div>
+</body></html>

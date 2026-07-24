@@ -1,0 +1,11 @@
+[
+  {
+    "id": "05772aae-d9cf-42ca-8d59-916a551ce219",
+    "name": "TEST",
+    "ip": "192.168.1.67",
+    "port": 5555,
+    "token": "7a6b7b56ba34be450ae411d5ccd0fd1dbcb21bac910fc9047526c24cd93d870d",
+    "last_seen": "21:44:56",
+    "last_scan": "16:31:46"
+  }
+]

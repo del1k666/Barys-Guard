@@ -1,0 +1,18 @@
+{
+  "vt_api_key": "3de266aba7fe26e5706a5e9e9ec9fd424d1e47912c8b2752647a15d668ab2f19",
+  "abuseipdb_key": "b834c0bc0e8aff2950d109591d1fe1bb846be6fb4565c1bcef34b73b9d3615196e94043686e70a48",
+  "groq_key": "",
+  "claude_key": "",
+  "ai_provider": "groq",
+  "results_dir": "C:/Tools/results",
+  "quarantine_dir": "C:/Tools/quarantine",
+  "vt_rate_limit_sec": 15,
+  "auto_save_reports": false,
+  "theme": "dark",
+  "language": "eng",
+  "saved_file_rules": [],
+  "saved_mem_rules": [
+    "Sliver_C2",
+    "Havoc_C2"
+  ]
+}
