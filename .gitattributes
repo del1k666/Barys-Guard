@@ -1,4 +1,16 @@
-agent/build/** linguist-generated=true
-agent/dist/** linguist-generated=true
+# Продукт разворачивается на Linux. В репозитории все текстовые файлы
+# хранятся с LF независимо от того, на какой ОС ведётся разработка.
+# Без этого systemd-юниты и shell-скрипты, созданные под Windows,
+# приезжают на сервер с CRLF и падают с "bad interpreter: /bin/bash^M".
+* text=auto eol=lf
+
+# Явно бинарные — не трогать
+*.png  binary
+*.pdf  binary
+*.exe  binary
+*.pyc  binary
+*.zip  binary
+
+# Не учитывать в статистике языков репозитория
 **/__pycache__/** linguist-generated=true
-*.pyc linguist-generated=true
+legacy/**        linguist-vendored=true
