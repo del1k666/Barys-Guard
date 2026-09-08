@@ -1,0 +1,52 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    """Настройки сервера. Все переменные окружения имеют префикс BG_."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="BG_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # Подключение к базе данных
+    database_url: str = (
+        "postgresql+asyncpg://barysguard:barysguard@localhost:5432/barysguard"
+    )
+
+    # Сетевые параметры
+    listen_host: str = "127.0.0.1"
+    listen_port: int = 8000
+
+    # Журналирование
+    log_level: str = "INFO"
+
+    # Удостоверяющий центр
+    ca_dir: Path = Path("/var/lib/barysguard/pki")
+    ca_passphrase: str = ""
+    ca_common_name: str = "BarysGuard Internal CA"
+    ca_valid_days: int = 3650
+
+    # Сертификаты агентов
+    agent_cert_days: int = 90
+    agent_cert_renew_after_days: int = 60
+
+    # Регистрация агентов
+    enrollment_token_ttl_hours: int = 24
+
+    # Опрос команд агентом
+    heartbeat_interval_seconds: int = 30
+
+    # Хранилище артефактов (используется в плане 1C)
+    artifact_path: Path = Path("/var/lib/barysguard/artifacts")
+    artifact_master_key: str = ""
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
