@@ -52,8 +52,10 @@ known-first-party = ["barysguard"]
 known-third-party = ["alembic"]
 
 [tool.ruff.lint.per-file-ignores]
-# Шаблон ревизии всегда импортирует op и sa — даже когда миграция ими не пользуется.
-"alembic/versions/*.py" = ["F401", "I001"]
+# Ревизии генерируются автоматически: шаблон всегда импортирует op и sa,
+# а строки вызовов create_table выходят за 100 символов. Править их руками
+# значит расходиться с тем, что выдаёт alembic при следующей автогенерации.
+"alembic/versions/*.py" = ["F401", "I001", "E501"]
 
 [tool.mypy]
 python_version = "3.12"

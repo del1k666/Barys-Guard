@@ -87,6 +87,9 @@ async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
     async with maker(bind=connection) as db_session:
         yield db_session
 
-    await transaction.rollback()
+    # Тест, ожидавший IntegrityError, уже откатил транзакцию изнутри сессии.
+    # Повторный откат в этом случае только сыплет предупреждениями.
+    if transaction.is_active:
+        await transaction.rollback()
     await connection.close()
     await engine.dispose()
