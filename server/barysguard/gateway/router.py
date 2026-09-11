@@ -6,6 +6,7 @@ from barysguard.core.config import Settings, get_settings
 from barysguard.core.errors import EnrollmentError, InvalidCsr
 from barysguard.db.models.agent import Agent, AgentStatus
 from barysguard.db.session import get_session
+from barysguard.gateway.deps import current_agent
 from barysguard.gateway.schemas import EnrollRequest, EnrollResponse
 from barysguard.pki.ca import CertificateAuthority
 from barysguard.pki.provider import get_ca
@@ -75,3 +76,9 @@ async def enroll(
         config_version=agent.config_version,
         heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
     )
+
+
+@router.get("/whoami")
+async def whoami(agent: Agent = Depends(current_agent)) -> dict[str, str]:
+    """Проверка аутентификации по клиентскому сертификату."""
+    return {"agent_id": str(agent.id), "hostname": agent.hostname}

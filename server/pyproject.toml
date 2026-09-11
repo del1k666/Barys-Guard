@@ -46,6 +46,20 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC"]
 ignore = ["S101"]
 
+[tool.ruff.lint.flake8-bugbear]
+# Depends в значении по умолчанию — основная идиома FastAPI, а не ловушка
+# с изменяемым значением по умолчанию, от которой предостерегает B008.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Security",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Header",
+    "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.File",
+]
+
 [tool.ruff.lint.isort]
 # Каталог alembic/ рядом с кодом сбивает определение: без этого пакет alembic
 # считается своим и его импорты уезжают в блок первой стороны.
