@@ -56,6 +56,9 @@ known-third-party = ["alembic"]
 # а строки вызовов create_table выходят за 100 символов. Править их руками
 # значит расходиться с тем, что выдаёт alembic при следующей автогенерации.
 "alembic/versions/*.py" = ["F401", "I001", "E501"]
+# Имена исключений домена читаются в коде как условие (raise TokenExpired),
+# и суффикс Error к ним ничего не добавляет.
+"barysguard/core/errors.py" = ["N818"]
 
 [tool.mypy]
 python_version = "3.12"
