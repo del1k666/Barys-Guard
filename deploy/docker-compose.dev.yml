@@ -1,0 +1,21 @@
+# Разработческий стенд: только PostgreSQL. Сервер запускается локально,
+# чтобы работал отладчик и перезагрузка по изменению файлов.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: barysguard
+      POSTGRES_PASSWORD: barysguard
+      POSTGRES_DB: barysguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - barysguard_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barysguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  barysguard_pgdata:
