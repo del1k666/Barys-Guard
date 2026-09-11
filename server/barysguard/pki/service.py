@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 
 from cryptography import x509
@@ -71,4 +72,23 @@ async def revoke_certificate(session: AsyncSession, serial_hex: str, reason: str
         return
     record.revoked_at = datetime.now(UTC)
     record.revocation_reason = reason
+    await session.flush()
+
+
+async def supersede_certificate(
+    session: AsyncSession, old_serial: str, new_id: uuid.UUID
+) -> None:
+    """Помечает старый сертификат заменённым, НЕ отзывая его.
+
+    Отзыв в момент продления сломал бы агента, у которого запрос прошёл,
+    а ответ не дошёл: он остался бы со старым сертификатом, уже недействительным.
+    Старый сертификат доживает свой срок сам.
+    """
+    statement = select(AgentCertificate).where(
+        AgentCertificate.serial == normalize_serial(old_serial)
+    )
+    record = (await session.execute(statement)).scalar_one_or_none()
+    if record is None:
+        return
+    record.superseded_by = new_id
     await session.flush()

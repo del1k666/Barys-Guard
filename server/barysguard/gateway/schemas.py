@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -24,3 +25,13 @@ class EnrollResponse(BaseModel):
     ca_pem: str
     config_version: int
     heartbeat_interval_seconds: int
+
+
+class RenewRequest(BaseModel):
+    csr_pem: str = Field(max_length=8192)
+
+
+class RenewResponse(BaseModel):
+    certificate_pem: str
+    ca_pem: str
+    not_after: datetime

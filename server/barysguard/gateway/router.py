@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,11 +6,16 @@ from barysguard.core.config import Settings, get_settings
 from barysguard.core.errors import EnrollmentError, InvalidCsr
 from barysguard.db.models.agent import Agent, AgentStatus
 from barysguard.db.session import get_session
-from barysguard.gateway.deps import current_agent
-from barysguard.gateway.schemas import EnrollRequest, EnrollResponse
+from barysguard.gateway.deps import SERIAL_HEADER, current_agent
+from barysguard.gateway.schemas import (
+    EnrollRequest,
+    EnrollResponse,
+    RenewRequest,
+    RenewResponse,
+)
 from barysguard.pki.ca import CertificateAuthority
 from barysguard.pki.provider import get_ca
-from barysguard.pki.service import issue_certificate
+from barysguard.pki.service import issue_certificate, supersede_certificate
 from barysguard.services.enrollment import consume_enrollment_token
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway"])
@@ -82,3 +87,30 @@ async def enroll(
 async def whoami(agent: Agent = Depends(current_agent)) -> dict[str, str]:
     """Проверка аутентификации по клиентскому сертификату."""
     return {"agent_id": str(agent.id), "hostname": agent.hostname}
+
+
+@router.post("/renew", response_model=RenewResponse)
+async def renew(
+    payload: RenewRequest,
+    request: Request,
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+    ca: CertificateAuthority = Depends(get_ca),
+    settings: Settings = Depends(get_settings),
+) -> RenewResponse:
+    try:
+        certificate_pem, record = await issue_certificate(
+            session, ca, agent, payload.csr_pem.encode("utf-8"), settings.agent_cert_days
+        )
+    except InvalidCsr as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid CSR") from exc
+
+    old_serial = request.headers.get(SERIAL_HEADER, "")
+    if old_serial:
+        await supersede_certificate(session, old_serial, record.id)
+
+    return RenewResponse(
+        certificate_pem=certificate_pem.decode("ascii"),
+        ca_pem=ca.certificate_pem.decode("ascii"),
+        not_after=record.not_after,
+    )
