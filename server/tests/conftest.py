@@ -78,18 +78,77 @@ def migrated_database_url(database_url: str) -> str:
 
 @pytest_asyncio.fixture
 async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
-    """Сессия на один тест. По завершении всё откатывается — тесты не влияют друг на друга."""
+    """Сессия на один тест.
+
+    Работает прямо на движке, а не внутри заранее открытой внешней транзакции.
+    Иначе commit в тесте, который готовит данные для последующего HTTP-запроса,
+    оказался бы всего лишь release savepoint: приложение ходит в базу по своему
+    соединению и подготовленного не увидело бы. Незафиксированное откатывается
+    здесь, а осознанно зафиксированное убирает TRUNCATE в фикстуре app_client.
+    """
     engine = create_engine_from_url(migrated_database_url)
-    connection = await engine.connect()
-    transaction = await connection.begin()
     maker = session_factory(engine)
 
-    async with maker(bind=connection) as db_session:
-        yield db_session
+    async with maker() as db_session:
+        try:
+            yield db_session
+        finally:
+            await db_session.rollback()
 
-    # Тест, ожидавший IntegrityError, уже откатил транзакцию изнутри сессии.
-    # Повторный откат в этом случае только сыплет предупреждениями.
-    if transaction.is_active:
-        await transaction.rollback()
-    await connection.close()
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def app_client(migrated_database_url, tmp_path, monkeypatch):
+    """Приложение, подключённое к тестовой базе, со своим CA во временном каталоге."""
+    from httpx import ASGITransport, AsyncClient
+
+    from barysguard.core.config import get_settings
+    from barysguard.db.session import get_session, reset_session_state
+    from barysguard.main import create_app
+    from barysguard.pki.provider import get_ca
+
+    monkeypatch.setenv("BG_DATABASE_URL", migrated_database_url)
+    monkeypatch.setenv("BG_CA_DIR", str(tmp_path / "pki"))
+    monkeypatch.setenv("BG_CA_PASSPHRASE", "test-passphrase")
+
+    # Обе функции кешируются через lru_cache. Без сброса тест получит
+    # настройки и удостоверяющий центр от предыдущего теста, а CA из
+    # удалённого tmp_path перестанет соответствовать записям в базе.
+    get_settings.cache_clear()
+    get_ca.cache_clear()
+    reset_session_state()
+
+    engine = create_engine_from_url(migrated_database_url)
+    maker = session_factory(engine)
+
+    # База общая на всю сессию тестов, поэтому состояние сбрасывается явно.
+    # Полагаться на уникальность machine_id в каждом тесте — хрупко.
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "TRUNCATE agent_certificates, enrollment_tokens, agents, "
+                "agent_groups RESTART IDENTITY CASCADE"
+            )
+        )
+
+    async def override_get_session():
+        async with maker() as db_session:
+            try:
+                yield db_session
+                await db_session.commit()
+            except Exception:
+                await db_session.rollback()
+                raise
+
+    app = create_app()
+    app.dependency_overrides[get_session] = override_get_session
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    await engine.dispose()
+    get_settings.cache_clear()
+    get_ca.cache_clear()
+    reset_session_state()

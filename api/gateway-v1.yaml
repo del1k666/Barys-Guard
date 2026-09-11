@@ -1,0 +1,198 @@
+openapi: 3.1.0
+info:
+  title: BarysGuard DLP Server
+  version: 0.1.0
+paths:
+  /health:
+    get:
+      tags:
+      - ops
+      summary: Health
+      description: Процесс жив. Не проверяет зависимости — для этого /ready.
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Health Get
+  /ready:
+    get:
+      tags:
+      - ops
+      summary: Ready
+      description: 'Готовность обслуживать запросы: база доступна.
+
+
+        Отделено от /health намеренно. Балансировщик снимает трафик по
+
+        /ready, но не перезапускает процесс — перезапуск при недоступной
+
+        базе не помогает и только удлиняет простой.'
+      operationId: ready_ready_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Ready Ready Get
+  /gateway/v1/ca:
+    get:
+      tags:
+      - gateway
+      summary: Get Ca Certificate
+      description: Сертификат удостоверяющего центра. Без аутентификации — он публичен
+        по определению.
+      operationId: get_ca_certificate_gateway_v1_ca_get
+      responses:
+        '200':
+          description: Successful Response
+  /gateway/v1/enroll:
+    post:
+      tags:
+      - gateway
+      summary: Enroll
+      operationId: enroll_gateway_v1_enroll_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    EnrollRequest:
+      properties:
+        token:
+          type: string
+          maxLength: 64
+          title: Token
+        csr_pem:
+          type: string
+          maxLength: 8192
+          title: Csr Pem
+        host:
+          $ref: '#/components/schemas/HostFacts'
+      type: object
+      required:
+      - token
+      - csr_pem
+      - host
+      title: EnrollRequest
+    EnrollResponse:
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        certificate_pem:
+          type: string
+          title: Certificate Pem
+        ca_pem:
+          type: string
+          title: Ca Pem
+        config_version:
+          type: integer
+          title: Config Version
+        heartbeat_interval_seconds:
+          type: integer
+          title: Heartbeat Interval Seconds
+      type: object
+      required:
+      - agent_id
+      - certificate_pem
+      - ca_pem
+      - config_version
+      - heartbeat_interval_seconds
+      title: EnrollResponse
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HostFacts:
+      properties:
+        machine_id:
+          type: string
+          maxLength: 255
+          title: Machine Id
+        hostname:
+          type: string
+          maxLength: 255
+          title: Hostname
+        os:
+          type: string
+          maxLength: 32
+          title: Os
+        os_version:
+          type: string
+          maxLength: 128
+          title: Os Version
+        arch:
+          type: string
+          maxLength: 32
+          title: Arch
+        agent_version:
+          type: string
+          maxLength: 32
+          title: Agent Version
+      type: object
+      required:
+      - machine_id
+      - hostname
+      - os
+      - os_version
+      - arch
+      - agent_version
+      title: HostFacts
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError

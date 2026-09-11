@@ -41,6 +41,10 @@ def create_app() -> FastAPI:
 
         return {"status": "ok", "database": "ok"}
 
+    from barysguard.gateway.router import router as gateway_router
+
+    app.include_router(gateway_router)
+
     return app
 
 
