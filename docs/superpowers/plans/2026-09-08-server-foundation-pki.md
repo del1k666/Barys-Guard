@@ -102,7 +102,7 @@ barysguard/
 - Consumes: ничего
 - Produces: чистый корень репозитория, в котором далее создаются `server/`, `agent/`, `api/`, `deploy/`
 
-- [ ] **Шаг 1: Отозвать скомпрометированные ключи API**
+- [x] **Шаг 1: Отозвать скомпрометированные ключи API**
 
 Это действие выполняется руками в веб-интерфейсах, автоматизировать его нельзя. Файл `config.json` находится в истории git с действующими ключами, то есть они считаются публично раскрытыми.
 
@@ -110,13 +110,13 @@ barysguard/
 2. Зайти на https://www.abuseipdb.com/account/api → удалить существующий ключ, создать новый.
 3. Новые ключи **никуда не записывать в репозиторий**. Они понадобятся в подпроекте 3 и будут задаваться через `BG_VT_API_KEY` и `BG_ABUSEIPDB_KEY`.
 
-- [ ] **Шаг 2: Убрать файлы с секретами из индекса git**
+- [x] **Шаг 2: Убрать файлы с секретами из индекса git**
 
 ```bash
 git rm --cached config.json hosts.json
 ```
 
-- [ ] **Шаг 3: Создать `.gitignore`**
+- [x] **Шаг 3: Создать `.gitignore`**
 
 ```gitignore
 # Секреты и локальная конфигурация
@@ -149,7 +149,7 @@ agent/bin/
 .vscode/
 ```
 
-- [ ] **Шаг 4: Перенести существующий код в `legacy/`**
+- [x] **Шаг 4: Перенести существующий код в `legacy/`**
 
 ```bash
 mkdir -p legacy/console legacy/agent-python
@@ -164,7 +164,7 @@ git mv main.py ui workers core styles.py config.py constants.py \
 
 Файлы `constants.py`, `core/yara_engine.py` и `core/hash_utils.py` остаются в `legacy/console/`. Они будут скопированы в `server/barysguard/engines/` в подпроекте 3, когда появится движок IoC. Переносить их сейчас незачем — на них ещё нечему опираться.
 
-- [ ] **Шаг 5: Создать каркас новых каталогов**
+- [x] **Шаг 5: Создать каркас новых каталогов**
 
 ```bash
 mkdir -p server/barysguard/{core,db/models,pki,services,gateway,api}
@@ -174,7 +174,7 @@ touch server/barysguard/__init__.py
 touch server/barysguard/{core,db,db/models,pki,services,gateway,api}/__init__.py
 ```
 
-- [ ] **Шаг 6: Проверить, что замороженное приложение осталось работоспособным**
+- [x] **Шаг 6: Проверить, что замороженное приложение осталось работоспособным**
 
 ```bash
 cd legacy/console && python -c "import ast,pathlib; [ast.parse(p.read_text(encoding='utf-8')) for p in pathlib.Path('.').rglob('*.py')]" && echo OK
@@ -182,7 +182,7 @@ cd legacy/console && python -c "import ast,pathlib; [ast.parse(p.read_text(encod
 
 Ожидается: `OK`. Это проверка того, что перемещение не сломало синтаксис файлов. Полный запуск приложения требует PyQt6 и здесь не нужен.
 
-- [ ] **Шаг 7: Зафиксировать**
+- [x] **Шаг 7: Зафиксировать**
 
 ```bash
 git add -A
@@ -214,7 +214,7 @@ AbuseIPDB отозваны и перевыпущены."
   - `create_app() -> FastAPI` — фабрика приложения
   - `setup_logging(level: str) -> None`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_health.py`:
 
@@ -259,12 +259,12 @@ def test_settings_defaults_match_spec():
     assert settings.heartbeat_interval_seconds == 30
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && python -m pytest tests/test_health.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.main'`
 
-- [ ] **Шаг 3: Создать `server/pyproject.toml`**
+- [x] **Шаг 3: Создать `server/pyproject.toml`**
 
 ```toml
 [project]
@@ -319,7 +319,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/core/config.py`**
+- [x] **Шаг 4: Создать `server/barysguard/core/config.py`**
 
 ```python
 from functools import lru_cache
@@ -376,7 +376,7 @@ def get_settings() -> Settings:
     return Settings()
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/core/logging.py`**
+- [x] **Шаг 5: Создать `server/barysguard/core/logging.py`**
 
 ```python
 import logging
@@ -401,7 +401,7 @@ def setup_logging(level: str = "INFO") -> None:
     root.setLevel(level.upper())
 ```
 
-- [ ] **Шаг 6: Создать `server/barysguard/main.py`**
+- [x] **Шаг 6: Создать `server/barysguard/main.py`**
 
 ```python
 from fastapi import FastAPI
@@ -432,7 +432,7 @@ def create_app() -> FastAPI:
 app = create_app()
 ```
 
-- [ ] **Шаг 7: Установить зависимости и запустить тесты**
+- [x] **Шаг 7: Установить зависимости и запустить тесты**
 
 ```bash
 cd server
@@ -443,7 +443,7 @@ python -m venv .venv
 
 Expected: 3 passed
 
-- [ ] **Шаг 8: Зафиксировать**
+- [x] **Шаг 8: Зафиксировать**
 
 ```bash
 git add server/pyproject.toml server/barysguard server/tests
@@ -475,7 +475,7 @@ git commit -m "feat: server skeleton with settings and structured logging"
   - `GET /ready` → `200 {"status": "ok", "database": "ok"}` либо `503`
   - Фикстуры pytest: `database_url` (сессионная), `migrated_database_url` (сессионная), `session` (на тест, с откатом)
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_migrations.py`:
 
@@ -548,12 +548,12 @@ async def test_ready_reports_failure_when_database_is_unavailable(monkeypatch):
     assert response.status_code == 503
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_migrations.py -v`
 Expected: FAIL — `fixture 'migrated_database_url' not found`
 
-- [ ] **Шаг 3: Создать `server/barysguard/db/base.py`**
+- [x] **Шаг 3: Создать `server/barysguard/db/base.py`**
 
 ```python
 from sqlalchemy import MetaData
@@ -575,7 +575,7 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/db/session.py`**
+- [x] **Шаг 4: Создать `server/barysguard/db/session.py`**
 
 ```python
 from collections.abc import AsyncIterator
@@ -632,7 +632,7 @@ async def get_session() -> AsyncIterator[AsyncSession]:
             raise
 ```
 
-- [ ] **Шаг 5: Создать конфигурацию Alembic**
+- [x] **Шаг 5: Создать конфигурацию Alembic**
 
 `server/alembic.ini`:
 
@@ -765,13 +765,13 @@ else:
     asyncio.run(run_migrations_online())
 ```
 
-- [ ] **Шаг 6: Создать `server/barysguard/db/models/__init__.py`**
+- [x] **Шаг 6: Создать `server/barysguard/db/models/__init__.py`**
 
 ```python
 """Импорт всех моделей. Alembic полагается на этот модуль для автогенерации."""
 ```
 
-- [ ] **Шаг 7: Создать `server/tests/conftest.py`**
+- [x] **Шаг 7: Создать `server/tests/conftest.py`**
 
 ```python
 from collections.abc import AsyncIterator, Iterator
@@ -827,7 +827,7 @@ async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
     await engine.dispose()
 ```
 
-- [ ] **Шаг 8: Добавить эндпоинт `/ready` в `server/barysguard/main.py`**
+- [x] **Шаг 8: Добавить эндпоинт `/ready` в `server/barysguard/main.py`**
 
 Добавить в `create_app()` рядом с `/health`:
 
@@ -860,7 +860,7 @@ async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
 from fastapi import FastAPI, Response, status
 ```
 
-- [ ] **Шаг 9: Создать начальную миграцию**
+- [x] **Шаг 9: Создать начальную миграцию**
 
 ```bash
 cd server
@@ -869,14 +869,14 @@ cd server
 
 Открыть созданный файл в `alembic/versions/` и оставить `upgrade()` и `downgrade()` с `pass`. Это базовая ревизия, от которой пойдут остальные.
 
-- [ ] **Шаг 10: Запустить тесты**
+- [x] **Шаг 10: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_migrations.py -v`
 Expected: 4 passed
 
 Требуется работающий Docker — testcontainers поднимает настоящий PostgreSQL.
 
-- [ ] **Шаг 11: Зафиксировать**
+- [x] **Шаг 11: Зафиксировать**
 
 ```bash
 git add server/alembic.ini server/alembic server/barysguard server/tests
@@ -900,7 +900,7 @@ git commit -m "feat: database foundation with alembic migrations and readiness p
   - `AgentGroup(id: UUID, name: str, parent_id: UUID | None, created_at: datetime)`
   - `Agent(id: UUID, machine_id: str, hostname: str, os: str, os_version: str, arch: str, agent_version: str, group_id: UUID | None, status: AgentStatus, enrolled_at: datetime, last_heartbeat_at: datetime | None, clock_skew_ms: int, config_version: int, last_ip: str | None, tags: dict)`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_agent_models.py`:
 
@@ -970,12 +970,12 @@ async def test_groups_form_a_tree(session):
     assert found.scalar_one().name == "Филиал Астана"
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_agent_models.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.db.models.agent'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/db/models/agent.py`**
+- [x] **Шаг 3: Создать `server/barysguard/db/models/agent.py`**
 
 ```python
 import enum
@@ -1057,7 +1057,7 @@ class Agent(Base):
     tags: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")
 ```
 
-- [ ] **Шаг 4: Зарегистрировать модели для Alembic**
+- [x] **Шаг 4: Зарегистрировать модели для Alembic**
 
 `server/barysguard/db/models/__init__.py`:
 
@@ -1069,7 +1069,7 @@ from barysguard.db.models.agent import Agent, AgentGroup, AgentStatus
 __all__ = ["Agent", "AgentGroup", "AgentStatus"]
 ```
 
-- [ ] **Шаг 5: Сгенерировать миграцию**
+- [x] **Шаг 5: Сгенерировать миграцию**
 
 ```bash
 cd server
@@ -1079,12 +1079,12 @@ BG_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhost:5432/barys
 
 Открыть созданный файл и убедиться, что созданы таблицы `agent_groups` и `agents`, индексы на `machine_id`, `group_id`, `status`, `last_heartbeat_at`. Если автогенерация пуста — не импортированы модели в `models/__init__.py`.
 
-- [ ] **Шаг 6: Запустить тесты**
+- [x] **Шаг 6: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_agent_models.py -v`
 Expected: 3 passed
 
-- [ ] **Шаг 7: Зафиксировать**
+- [x] **Шаг 7: Зафиксировать**
 
 ```bash
 git add server/barysguard/db/models server/alembic/versions server/tests
@@ -1113,7 +1113,7 @@ git commit -m "feat: agent and agent group models"
   - `async create_enrollment_token(session, *, created_by: uuid.UUID | None, group_id: uuid.UUID | None, ttl_hours: int, max_uses: int) -> tuple[str, EnrollmentToken]` — возвращает **открытый** токен и запись; открытый токен нигде не сохраняется
   - `async consume_enrollment_token(session, raw: str) -> EnrollmentToken` — атомарно увеличивает `used_count`, при нарушении условий бросает подкласс `EnrollmentError`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_enrollment_service.py`:
 
@@ -1213,12 +1213,12 @@ async def test_revoked_token_is_rejected(session):
         await consume_enrollment_token(session, raw)
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_enrollment_service.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.core.errors'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/core/errors.py`**
+- [x] **Шаг 3: Создать `server/barysguard/core/errors.py`**
 
 ```python
 class BarysGuardError(Exception):
@@ -1253,7 +1253,7 @@ class InvalidCsr(PkiError):
     pass
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/db/models/enrollment.py`**
+- [x] **Шаг 4: Создать `server/barysguard/db/models/enrollment.py`**
 
 ```python
 import uuid
@@ -1288,7 +1288,7 @@ class EnrollmentToken(Base):
     )
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/services/enrollment.py`**
+- [x] **Шаг 5: Создать `server/barysguard/services/enrollment.py`**
 
 ```python
 import base64
@@ -1374,7 +1374,7 @@ async def consume_enrollment_token(session: AsyncSession, raw: str) -> Enrollmen
     return record
 ```
 
-- [ ] **Шаг 6: Зарегистрировать модель и сгенерировать миграцию**
+- [x] **Шаг 6: Зарегистрировать модель и сгенерировать миграцию**
 
 Добавить в `server/barysguard/db/models/__init__.py`:
 
@@ -1388,12 +1388,12 @@ __all__ = ["Agent", "AgentGroup", "AgentStatus", "EnrollmentToken"]
 cd server && .venv/bin/alembic revision --autogenerate -m "enrollment tokens"
 ```
 
-- [ ] **Шаг 7: Запустить тесты**
+- [x] **Шаг 7: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_enrollment_service.py -v`
 Expected: 8 passed
 
-- [ ] **Шаг 8: Зафиксировать**
+- [x] **Шаг 8: Зафиксировать**
 
 ```bash
 git add server/barysguard server/alembic/versions server/tests
@@ -1416,7 +1416,7 @@ git commit -m "feat: enrollment tokens with hashed storage and atomic consumptio
   - `CertificateAuthority.sign_csr(csr_pem: bytes, subject_cn: str, valid_days: int) -> tuple[bytes, int]` — возвращает PEM сертификата и его серийный номер
   - `ensure_ca(ca_dir: Path, passphrase: str, common_name: str, valid_days: int) -> CertificateAuthority` — создаёт при отсутствии, иначе загружает
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_ca.py`:
 
@@ -1510,12 +1510,12 @@ def test_csr_with_broken_signature_is_rejected(tmp_path):
         ca.sign_csr(corrupted, "6f1a9c2e-0e4b-4f9c-9a3e-1d2b3c4d5e6f", 90)
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_ca.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.pki.ca'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/pki/ca.py`**
+- [x] **Шаг 3: Создать `server/barysguard/pki/ca.py`**
 
 ```python
 import datetime as dt
@@ -1677,14 +1677,14 @@ def ensure_ca(
     return CertificateAuthority(certificate=certificate, private_key=key)
 ```
 
-- [ ] **Шаг 4: Запустить тесты**
+- [x] **Шаг 4: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_ca.py -v`
 Expected: 7 passed
 
 Проверка прав файла (`test_ca_key_file_is_not_world_readable`) осмысленна только на POSIX. На Windows разработчику она пройдёт формально; окончательная проверка выполняется в CI на Linux.
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 git add server/barysguard/pki server/tests/test_ca.py
@@ -1711,7 +1711,7 @@ git commit -m "feat: internal certificate authority with encrypted key at rest"
   - `async revoke_certificate(session, serial_hex: str, reason: str) -> None`
   - `serial_to_hex(serial: int) -> str`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_certificate_service.py`:
 
@@ -1809,12 +1809,12 @@ async def test_unknown_serial_is_not_active(session):
     assert await find_active_certificate(session, "deadbeef") is None
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_certificate_service.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.pki.service'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/db/models/certificate.py`**
+- [x] **Шаг 3: Создать `server/barysguard/db/models/certificate.py`**
 
 ```python
 import uuid
@@ -1861,7 +1861,7 @@ class AgentCertificate(Base):
     )
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/pki/service.py`**
+- [x] **Шаг 4: Создать `server/barysguard/pki/service.py`**
 
 ```python
 from datetime import UTC, datetime
@@ -1942,7 +1942,7 @@ async def revoke_certificate(session: AsyncSession, serial_hex: str, reason: str
 
 `normalize_serial` живёт именно здесь, а не в слое HTTP: она относится к формату серийного номера, а не к транспорту. Задача 8 импортирует её отсюда — обратный порядок дал бы циклический импорт.
 
-- [ ] **Шаг 5: Зарегистрировать модель и сгенерировать миграцию**
+- [x] **Шаг 5: Зарегистрировать модель и сгенерировать миграцию**
 
 Добавить в `server/barysguard/db/models/__init__.py`:
 
@@ -1956,12 +1956,12 @@ __all__ = ["Agent", "AgentGroup", "AgentStatus", "AgentCertificate", "Enrollment
 cd server && .venv/bin/alembic revision --autogenerate -m "agent certificates"
 ```
 
-- [ ] **Шаг 6: Запустить тесты**
+- [x] **Шаг 6: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_certificate_service.py -v`
 Expected: 5 passed
 
-- [ ] **Шаг 7: Зафиксировать**
+- [x] **Шаг 7: Зафиксировать**
 
 ```bash
 git add server/barysguard server/alembic/versions server/tests
@@ -1987,7 +1987,7 @@ git commit -m "feat: agent certificate issuance and revocation service"
   - `POST /gateway/v1/enroll` → `EnrollResponse(agent_id, certificate_pem, ca_pem, config_version, heartbeat_interval_seconds)`
   - `get_ca() -> CertificateAuthority` — зависимость FastAPI, кеширующая CA
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_enroll_endpoint.py`:
 
@@ -2121,7 +2121,7 @@ async def test_malformed_csr_is_rejected(app_client, session):
     assert response.status_code == 400
 ```
 
-- [ ] **Шаг 2: Добавить фикстуру `app_client` в `server/tests/conftest.py`**
+- [x] **Шаг 2: Добавить фикстуру `app_client` в `server/tests/conftest.py`**
 
 ```python
 @pytest_asyncio.fixture
@@ -2185,12 +2185,12 @@ async def app_client(migrated_database_url, tmp_path, monkeypatch):
 
 Фикстура `app_client` создаётся в задаче 7, но в её `TRUNCATE` перечислены таблицы `audit_log` и `users`, которые появятся только в задачах 10 и 11. До этого момента их имена в списке вызовут ошибку. При выполнении задачи 7 перечислить только существующие таблицы (`agent_certificates`, `enrollment_tokens`, `agents`, `agent_groups`) и дополнить список в задачах 10 и 11.
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_enroll_endpoint.py -v`
 Expected: FAIL — 404, маршрут `/gateway/v1/ca` не зарегистрирован
 
-- [ ] **Шаг 4: Создать `server/barysguard/pki/provider.py`**
+- [x] **Шаг 4: Создать `server/barysguard/pki/provider.py`**
 
 ```python
 from functools import lru_cache
@@ -2214,7 +2214,7 @@ def get_ca() -> CertificateAuthority:
     )
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/gateway/schemas.py`**
+- [x] **Шаг 5: Создать `server/barysguard/gateway/schemas.py`**
 
 ```python
 import uuid
@@ -2245,7 +2245,7 @@ class EnrollResponse(BaseModel):
     heartbeat_interval_seconds: int
 ```
 
-- [ ] **Шаг 6: Создать `server/barysguard/gateway/router.py`**
+- [x] **Шаг 6: Создать `server/barysguard/gateway/router.py`**
 
 ```python
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -2327,7 +2327,7 @@ async def enroll(
     )
 ```
 
-- [ ] **Шаг 7: Подключить маршрутизатор в `server/barysguard/main.py`**
+- [x] **Шаг 7: Подключить маршрутизатор в `server/barysguard/main.py`**
 
 Добавить в `create_app()` перед `return app`:
 
@@ -2337,12 +2337,12 @@ async def enroll(
     app.include_router(gateway_router)
 ```
 
-- [ ] **Шаг 8: Запустить тесты**
+- [x] **Шаг 8: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_enroll_endpoint.py -v`
 Expected: 6 passed
 
-- [ ] **Шаг 9: Выгрузить контракт OpenAPI в `api/gateway-v1.yaml`**
+- [x] **Шаг 9: Выгрузить контракт OpenAPI в `api/gateway-v1.yaml`**
 
 ```bash
 cd server
@@ -2357,7 +2357,7 @@ PY
 
 Этот файл — общий контракт с агентом из плана 1B: из него генерируется клиент на Go. Он перегенерируется при каждом изменении схем.
 
-- [ ] **Шаг 10: Зафиксировать**
+- [x] **Шаг 10: Зафиксировать**
 
 ```bash
 git add server/barysguard server/tests api/gateway-v1.yaml
@@ -2381,7 +2381,7 @@ git commit -m "feat: agent enrollment endpoints with CSR signing"
   - Заголовки контракта с nginx: `X-Client-Verify` (`SUCCESS` или иное), `X-Client-Serial` (шестнадцатеричный серийный номер)
   - `GET /gateway/v1/whoami` → `{"agent_id": ..., "hostname": ...}` — эндпоинт для проверки аутентификации
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_mtls_identity.py`:
 
@@ -2530,12 +2530,12 @@ async def test_serial_is_normalised_from_nginx_format(app_client, session):
     assert response.status_code == 200
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_mtls_identity.py -v`
 Expected: FAIL — 404, маршрут `/gateway/v1/whoami` отсутствует
 
-- [ ] **Шаг 3: Создать `server/barysguard/gateway/deps.py`**
+- [x] **Шаг 3: Создать `server/barysguard/gateway/deps.py`**
 
 ```python
 from fastapi import Depends, HTTPException, Request, status
@@ -2582,7 +2582,7 @@ async def current_agent(
     return agent
 ```
 
-- [ ] **Шаг 4: Добавить эндпоинт `whoami` в `server/barysguard/gateway/router.py`**
+- [x] **Шаг 4: Добавить эндпоинт `whoami` в `server/barysguard/gateway/router.py`**
 
 ```python
 from barysguard.gateway.deps import current_agent
@@ -2594,7 +2594,7 @@ async def whoami(agent: Agent = Depends(current_agent)) -> dict[str, str]:
     return {"agent_id": str(agent.id), "hostname": agent.hostname}
 ```
 
-- [ ] **Шаг 5: Создать `deploy/nginx/barysguard.conf`**
+- [x] **Шаг 5: Создать `deploy/nginx/barysguard.conf`**
 
 ```nginx
 # Конфигурация nginx для BarysGuard DLP.
@@ -2654,12 +2654,12 @@ server {
 }
 ```
 
-- [ ] **Шаг 6: Запустить тесты**
+- [x] **Шаг 6: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_mtls_identity.py -v`
 Expected: 7 passed
 
-- [ ] **Шаг 7: Зафиксировать**
+- [x] **Шаг 7: Зафиксировать**
 
 ```bash
 git add server/barysguard deploy/nginx server/tests
@@ -2687,7 +2687,7 @@ git commit -m "feat: mTLS agent identity with nginx header contract
   - `POST /gateway/v1/renew`
   - `async supersede_certificate(session, old_serial: str, new_id: uuid.UUID) -> None`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_renew_endpoint.py`:
 
@@ -2799,12 +2799,12 @@ async def test_renew_with_revoked_certificate_is_forbidden(app_client, session):
     assert response.status_code == 403
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_renew_endpoint.py -v`
 Expected: FAIL — 404, маршрут `/gateway/v1/renew` отсутствует
 
-- [ ] **Шаг 3: Добавить `supersede_certificate` в `server/barysguard/pki/service.py`**
+- [x] **Шаг 3: Добавить `supersede_certificate` в `server/barysguard/pki/service.py`**
 
 ```python
 import uuid
@@ -2829,7 +2829,7 @@ async def supersede_certificate(
     await session.flush()
 ```
 
-- [ ] **Шаг 4: Добавить схемы в `server/barysguard/gateway/schemas.py`**
+- [x] **Шаг 4: Добавить схемы в `server/barysguard/gateway/schemas.py`**
 
 ```python
 from datetime import datetime
@@ -2845,7 +2845,7 @@ class RenewResponse(BaseModel):
     not_after: datetime
 ```
 
-- [ ] **Шаг 5: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
+- [x] **Шаг 5: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
 
 ```python
 from barysguard.gateway.deps import SERIAL_HEADER, current_agent
@@ -2882,12 +2882,12 @@ async def renew(
 
 Добавить `Request` в импорты из `fastapi`.
 
-- [ ] **Шаг 6: Запустить тесты**
+- [x] **Шаг 6: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_renew_endpoint.py -v`
 Expected: 4 passed
 
-- [ ] **Шаг 7: Зафиксировать**
+- [x] **Шаг 7: Зафиксировать**
 
 ```bash
 git add server/barysguard server/tests
@@ -2913,7 +2913,7 @@ git commit -m "feat: certificate renewal endpoint"
   - `compute_entry_hash(seq, at, user_id, action, target_type, target_id, payload, prev_hash) -> str`
   - `async verify_audit_chain(session) -> int | None` — возвращает `seq` первой повреждённой записи либо `None`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_audit.py`:
 
@@ -2987,12 +2987,12 @@ async def test_tampering_is_detected(session):
     assert await verify_audit_chain(session) == tampered.seq
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_audit.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.services.audit'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/db/models/audit.py`**
+- [x] **Шаг 3: Создать `server/barysguard/db/models/audit.py`**
 
 ```python
 import uuid
@@ -3030,7 +3030,7 @@ class AuditLog(Base):
     hash: Mapped[str] = mapped_column(String(64))
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/services/audit.py`**
+- [x] **Шаг 4: Создать `server/barysguard/services/audit.py`**
 
 ```python
 import hashlib
@@ -3147,7 +3147,7 @@ async def verify_audit_chain(session: AsyncSession) -> int | None:
     return None
 ```
 
-- [ ] **Шаг 5: Зарегистрировать модель и сгенерировать миграцию**
+- [x] **Шаг 5: Зарегистрировать модель и сгенерировать миграцию**
 
 Добавить в `server/barysguard/db/models/__init__.py`:
 
@@ -3161,7 +3161,7 @@ from barysguard.db.models.audit import AuditLog
 cd server && .venv/bin/alembic revision --autogenerate -m "audit log"
 ```
 
-- [ ] **Шаг 6: Добавить в миграцию отзыв прав на изменение**
+- [x] **Шаг 6: Добавить в миграцию отзыв прав на изменение**
 
 В сгенерированный файл миграции, в конец `upgrade()`:
 
@@ -3196,12 +3196,12 @@ cd server && .venv/bin/alembic revision --autogenerate -m "audit log"
     )
 ```
 
-- [ ] **Шаг 7: Запустить тесты**
+- [x] **Шаг 7: Запустить тесты**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_audit.py -v`
 Expected: 4 passed
 
-- [ ] **Шаг 8: Зафиксировать**
+- [x] **Шаг 8: Зафиксировать**
 
 ```bash
 git add server/barysguard server/alembic/versions server/tests
@@ -3234,7 +3234,7 @@ git commit -m "feat: append-only audit log with hash chain"
   - `GET /api/v1/agents` → список агентов, ограниченный `scope_group_id`
   - Консольная команда `barysguard-admin create-user --username U --role admin`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 `server/tests/test_operator_api.py`:
 
@@ -3324,12 +3324,12 @@ async def test_deactivated_user_is_rejected(app_client, session):
     assert response.status_code == 401
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 Run: `cd server && .venv/bin/python -m pytest tests/test_operator_api.py -v`
 Expected: FAIL — `ModuleNotFoundError: No module named 'barysguard.db.models.user'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/db/models/user.py`**
+- [x] **Шаг 3: Создать `server/barysguard/db/models/user.py`**
 
 ```python
 import enum
@@ -3374,7 +3374,7 @@ class User(Base):
     )
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/services/users.py`**
+- [x] **Шаг 4: Создать `server/barysguard/services/users.py`**
 
 ```python
 import hashlib
@@ -3419,7 +3419,7 @@ async def find_active_user_by_key(session: AsyncSession, raw_key: str) -> User |
     return (await session.execute(statement)).scalar_one_or_none()
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/api/deps.py`**
+- [x] **Шаг 5: Создать `server/barysguard/api/deps.py`**
 
 ```python
 from collections.abc import Callable, Coroutine
@@ -3459,7 +3459,7 @@ def require_role(*roles: UserRole) -> Callable[..., Coroutine[Any, Any, User]]:
     return dependency
 ```
 
-- [ ] **Шаг 6: Создать `server/barysguard/api/schemas.py`**
+- [x] **Шаг 6: Создать `server/barysguard/api/schemas.py`**
 
 ```python
 import uuid
@@ -3489,7 +3489,7 @@ class AgentSummary(BaseModel):
     last_heartbeat_at: datetime | None
 ```
 
-- [ ] **Шаг 7: Создать `server/barysguard/api/router.py`**
+- [x] **Шаг 7: Создать `server/barysguard/api/router.py`**
 
 ```python
 from fastapi import APIRouter, Depends, status
@@ -3570,7 +3570,7 @@ async def list_agents(
     ]
 ```
 
-- [ ] **Шаг 8: Создать `server/barysguard/cli.py`**
+- [x] **Шаг 8: Создать `server/barysguard/cli.py`**
 
 ```python
 import argparse
@@ -3617,7 +3617,7 @@ def main() -> None:
 barysguard-admin = "barysguard.cli:main"
 ```
 
-- [ ] **Шаг 9: Подключить маршрутизатор, зарегистрировать модель, сгенерировать миграцию**
+- [x] **Шаг 9: Подключить маршрутизатор, зарегистрировать модель, сгенерировать миграцию**
 
 В `server/barysguard/main.py`, в `create_app()`:
 
@@ -3633,12 +3633,12 @@ barysguard-admin = "barysguard.cli:main"
 cd server && .venv/bin/alembic revision --autogenerate -m "users"
 ```
 
-- [ ] **Шаг 10: Запустить весь набор тестов**
+- [x] **Шаг 10: Запустить весь набор тестов**
 
 Run: `cd server && .venv/bin/python -m pytest -v`
 Expected: все тесты проходят (около 45)
 
-- [ ] **Шаг 11: Проверить линт и типы**
+- [x] **Шаг 11: Проверить линт и типы**
 
 ```bash
 cd server
@@ -3649,7 +3649,7 @@ cd server
 
 Expected: без ошибок
 
-- [ ] **Шаг 12: Зафиксировать**
+- [x] **Шаг 12: Зафиксировать**
 
 ```bash
 git add server/barysguard server/alembic/versions server/tests server/pyproject.toml
@@ -3673,7 +3673,7 @@ git commit -m "feat: operator authentication and enrollment token API
 - Consumes: всё предыдущее
 - Produces: воспроизводимая процедура запуска, подтверждающая критерии готовности 1–4 и 8 из раздела 22 спецификации
 
-- [ ] **Шаг 1: Создать `deploy/docker-compose.dev.yml`**
+- [x] **Шаг 1: Создать `deploy/docker-compose.dev.yml`**
 
 ```yaml
 # Разработческий стенд: только PostgreSQL. Сервер запускается локально,
@@ -3699,7 +3699,7 @@ volumes:
   barysguard_pgdata:
 ```
 
-- [ ] **Шаг 2: Создать `docs/QUICKSTART.md`**
+- [x] **Шаг 2: Создать `docs/QUICKSTART.md`**
 
 ````markdown
 # BarysGuard DLP — запуск сервера
@@ -3785,11 +3785,11 @@ curl -s localhost:8000/api/v1/agents -H "X-Api-Key: $BG_ADMIN_KEY"
 `BG_CA_PASSPHRASE` при утрате делает невозможным выпуск и продление сертификатов — весь флот придётся регистрировать заново. Хранить вне сервера.
 ````
 
-- [ ] **Шаг 3: Выполнить проверку по инструкции целиком**
+- [x] **Шаг 3: Выполнить проверку по инструкции целиком**
 
 Пройти `docs/QUICKSTART.md` от начала до конца на чистом окружении. Все пять проверок должны отработать. Если хотя бы одна не проходит — исправить и повторить.
 
-- [ ] **Шаг 4: Проверить немедленность отзыва**
+- [x] **Шаг 4: Проверить немедленность отзыва**
 
 ```bash
 # Отозвать сертификат зарегистрированного агента напрямую в базе
@@ -3803,7 +3803,7 @@ curl -s -o /dev/null -w "%{http_code}\n" localhost:8000/gateway/v1/whoami \
 
 Expected: `403`
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 git add deploy/docker-compose.dev.yml docs/QUICKSTART.md
