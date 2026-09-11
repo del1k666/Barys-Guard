@@ -26,6 +26,9 @@ dev = [
     "pyyaml>=6",
 ]
 
+[project.scripts]
+barysguard-admin = "barysguard.cli:main"
+
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
@@ -41,6 +44,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.format]
+# Ревизии пишет alembic, а не человек. Форматирование их вида всё равно
+# разойдётся при следующей автогенерации, и проверка начнёт падать на ровном месте.
+exclude = ["alembic/versions/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC"]

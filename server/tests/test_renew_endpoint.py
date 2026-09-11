@@ -55,9 +55,7 @@ async def test_renew_issues_new_certificate_for_same_agent(app_client, session):
     )
 
     assert response.status_code == 200
-    new_certificate = x509.load_pem_x509_certificate(
-        response.json()["certificate_pem"].encode()
-    )
+    new_certificate = x509.load_pem_x509_certificate(response.json()["certificate_pem"].encode())
     assert new_certificate.subject.rfc4514_string() == f"CN={agent_id}"
     assert format(new_certificate.serial_number, "x") != serial
 
@@ -73,9 +71,7 @@ async def test_old_certificate_is_marked_superseded_but_still_valid(app_client, 
         headers={"X-Client-Verify": "SUCCESS", "X-Client-Serial": serial},
     )
 
-    found = await session.execute(
-        select(AgentCertificate).where(AgentCertificate.serial == serial)
-    )
+    found = await session.execute(select(AgentCertificate).where(AgentCertificate.serial == serial))
     old = found.scalar_one()
     assert old.superseded_by is not None
     assert old.revoked_at is None

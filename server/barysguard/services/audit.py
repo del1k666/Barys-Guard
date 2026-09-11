@@ -88,9 +88,7 @@ async def record_audit(
 
 async def verify_audit_chain(session: AsyncSession) -> int | None:
     """Возвращает seq первой повреждённой записи либо None, если цепочка цела."""
-    entries = (
-        (await session.execute(select(AuditLog).order_by(AuditLog.seq.asc()))).scalars().all()
-    )
+    entries = (await session.execute(select(AuditLog).order_by(AuditLog.seq.asc()))).scalars().all()
 
     expected_prev = GENESIS_HASH
     for entry in entries:

@@ -37,6 +37,4 @@ class AgentCertificate(Base):
         ForeignKey("agent_certificates.id", ondelete="SET NULL")
     )
 
-    issued_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

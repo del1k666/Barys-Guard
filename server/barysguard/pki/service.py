@@ -75,9 +75,7 @@ async def revoke_certificate(session: AsyncSession, serial_hex: str, reason: str
     await session.flush()
 
 
-async def supersede_certificate(
-    session: AsyncSession, old_serial: str, new_id: uuid.UUID
-) -> None:
+async def supersede_certificate(session: AsyncSession, old_serial: str, new_id: uuid.UUID) -> None:
     """Помечает старый сертификат заменённым, НЕ отзывая его.
 
     Отзыв в момент продления сломал бы агента, у которого запрос прошёл,

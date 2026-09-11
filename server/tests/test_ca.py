@@ -32,9 +32,7 @@ def _make_csr_with_tampered_subject() -> bytes:
     key = ec.generate_private_key(ec.SECP256R1())
     csr = (
         x509.CertificateSigningRequestBuilder()
-        .subject_name(
-            x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "tampered-subject")])
-        )
+        .subject_name(x509.Name([x509.NameAttribute(x509.NameOID.COMMON_NAME, "tampered-subject")]))
         .sign(key, hashes.SHA256())
     )
     der = csr.public_bytes(serialization.Encoding.DER)

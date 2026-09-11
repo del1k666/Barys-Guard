@@ -80,8 +80,147 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/v1/whoami:
+    get:
+      tags:
+      - gateway
+      summary: Whoami
+      description: Проверка аутентификации по клиентскому сертификату.
+      operationId: whoami_gateway_v1_whoami_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Whoami Gateway V1 Whoami Get
+  /gateway/v1/renew:
+    post:
+      tags:
+      - gateway
+      summary: Renew
+      operationId: renew_gateway_v1_renew_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenewRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RenewResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/enrollment-tokens:
+    post:
+      tags:
+      - api
+      summary: Create Token
+      operationId: create_token_api_v1_enrollment_tokens_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEnrollmentTokenRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentTokenResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents:
+    get:
+      tags:
+      - api
+      summary: List Agents
+      operationId: list_agents_api_v1_agents_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/AgentSummary'
+                type: array
+                title: Response List Agents Api V1 Agents Get
 components:
   schemas:
+    AgentSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        hostname:
+          type: string
+          title: Hostname
+        os:
+          type: string
+          title: Os
+        agent_version:
+          type: string
+          title: Agent Version
+        status:
+          type: string
+          title: Status
+        last_heartbeat_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Heartbeat At
+      type: object
+      required:
+      - id
+      - hostname
+      - os
+      - agent_version
+      - status
+      - last_heartbeat_at
+      title: AgentSummary
+    CreateEnrollmentTokenRequest:
+      properties:
+        max_uses:
+          type: integer
+          maximum: 10000.0
+          minimum: 1.0
+          title: Max Uses
+          default: 1
+        ttl_hours:
+          anyOf:
+          - type: integer
+            maximum: 8760.0
+            minimum: 1.0
+          - type: 'null'
+          title: Ttl Hours
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+      type: object
+      title: CreateEnrollmentTokenRequest
     EnrollRequest:
       properties:
         token:
@@ -126,6 +265,24 @@ components:
       - config_version
       - heartbeat_interval_seconds
       title: EnrollResponse
+    EnrollmentTokenResponse:
+      properties:
+        token:
+          type: string
+          title: Token
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        max_uses:
+          type: integer
+          title: Max Uses
+      type: object
+      required:
+      - token
+      - expires_at
+      - max_uses
+      title: EnrollmentTokenResponse
     HTTPValidationError:
       properties:
         detail:
@@ -170,6 +327,34 @@ components:
       - arch
       - agent_version
       title: HostFacts
+    RenewRequest:
+      properties:
+        csr_pem:
+          type: string
+          maxLength: 8192
+          title: Csr Pem
+      type: object
+      required:
+      - csr_pem
+      title: RenewRequest
+    RenewResponse:
+      properties:
+        certificate_pem:
+          type: string
+          title: Certificate Pem
+        ca_pem:
+          type: string
+          title: Ca Pem
+        not_after:
+          type: string
+          format: date-time
+          title: Not After
+      type: object
+      required:
+      - certificate_pem
+      - ca_pem
+      - not_after
+      title: RenewResponse
     ValidationError:
       properties:
         loc:

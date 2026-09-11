@@ -64,9 +64,7 @@ class CertificateAuthority:
                 ),
                 critical=True,
             )
-            .add_extension(
-                x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False
-            )
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CLIENT_AUTH]), critical=False)
             .add_extension(
                 x509.SubjectKeyIdentifier.from_public_key(csr.public_key()), critical=False
             )
@@ -74,9 +72,7 @@ class CertificateAuthority:
                 # Ключ берётся у самого центра, а не из его сертификата: тип
                 # открытого ключа сертификата шире и включает схемы, которых
                 # from_issuer_public_key не принимает.
-                x509.AuthorityKeyIdentifier.from_issuer_public_key(
-                    self.private_key.public_key()
-                ),
+                x509.AuthorityKeyIdentifier.from_issuer_public_key(self.private_key.public_key()),
                 critical=False,
             )
             .sign(self.private_key, hashes.SHA256())
@@ -132,9 +128,7 @@ def _create_ca(
     )
     key_path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
 
-    (ca_dir / CA_CERT_FILENAME).write_bytes(
-        certificate.public_bytes(serialization.Encoding.PEM)
-    )
+    (ca_dir / CA_CERT_FILENAME).write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
 
     return CertificateAuthority(certificate=certificate, private_key=key)
 

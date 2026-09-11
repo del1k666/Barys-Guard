@@ -56,9 +56,7 @@ async def test_enroll_issues_certificate_and_creates_agent(app_client, session):
     certificate = x509.load_pem_x509_certificate(body["certificate_pem"].encode())
     assert certificate.subject.rfc4514_string() == f"CN={body['agent_id']}"
 
-    found = await session.execute(
-        select(Agent).where(Agent.machine_id == HOST_FACTS["machine_id"])
-    )
+    found = await session.execute(select(Agent).where(Agent.machine_id == HOST_FACTS["machine_id"]))
     assert found.scalar_one().hostname == "ACC-PC-01"
 
 
@@ -104,9 +102,7 @@ async def test_reenrollment_reuses_existing_agent(app_client, session):
         assert response.status_code == 201
         agent_id = response.json()["agent_id"]
 
-    found = await session.execute(
-        select(Agent).where(Agent.machine_id == HOST_FACTS["machine_id"])
-    )
+    found = await session.execute(select(Agent).where(Agent.machine_id == HOST_FACTS["machine_id"]))
     agents = found.scalars().all()
     assert len(agents) == 1
     assert str(agents[0].id) == agent_id

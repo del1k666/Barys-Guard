@@ -15,9 +15,7 @@ class Settings(BaseSettings):
     )
 
     # Подключение к базе данных
-    database_url: str = (
-        "postgresql+asyncpg://barysguard:barysguard@localhost:5432/barysguard"
-    )
+    database_url: str = "postgresql+asyncpg://barysguard:barysguard@localhost:5432/barysguard"
 
     # Сетевые параметры
     listen_host: str = "127.0.0.1"

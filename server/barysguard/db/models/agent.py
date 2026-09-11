@@ -34,9 +34,7 @@ class AgentGroup(Base):
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agent_groups.id", ondelete="SET NULL")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Agent(Base):

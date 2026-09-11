@@ -51,9 +51,7 @@ async def test_ready_reports_failure_when_database_is_unavailable(monkeypatch):
     from barysguard.db.session import reset_session_state
     from barysguard.main import create_app
 
-    monkeypatch.setenv(
-        "BG_DATABASE_URL", "postgresql+asyncpg://nobody:nobody@127.0.0.1:1/nothing"
-    )
+    monkeypatch.setenv("BG_DATABASE_URL", "postgresql+asyncpg://nobody:nobody@127.0.0.1:1/nothing")
     get_settings.cache_clear()
     reset_session_state()
 

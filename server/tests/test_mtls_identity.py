@@ -62,9 +62,7 @@ async def test_valid_client_certificate_identifies_agent(app_client, session):
 async def test_missing_verify_header_is_forbidden(app_client, session):
     _, serial = await _enroll(app_client, session, "mtls-no-verify")
 
-    response = await app_client.get(
-        "/gateway/v1/whoami", headers={"X-Client-Serial": serial}
-    )
+    response = await app_client.get("/gateway/v1/whoami", headers={"X-Client-Serial": serial})
 
     assert response.status_code == 403
 
@@ -115,9 +113,7 @@ async def test_expired_certificate_is_forbidden(app_client, session):
     from barysguard.db.models.certificate import AgentCertificate
 
     _, serial = await _enroll(app_client, session, "mtls-expired")
-    found = await session.execute(
-        select(AgentCertificate).where(AgentCertificate.serial == serial)
-    )
+    found = await session.execute(select(AgentCertificate).where(AgentCertificate.serial == serial))
     found.scalar_one().not_after = datetime.now(UTC) - timedelta(seconds=1)
     await session.commit()
 
