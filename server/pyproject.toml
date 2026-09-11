@@ -34,6 +34,7 @@ include = ["barysguard*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -43,6 +44,16 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "S", "ASYNC"]
 ignore = ["S101"]
+
+[tool.ruff.lint.isort]
+# Каталог alembic/ рядом с кодом сбивает определение: без этого пакет alembic
+# считается своим и его импорты уезжают в блок первой стороны.
+known-first-party = ["barysguard"]
+known-third-party = ["alembic"]
+
+[tool.ruff.lint.per-file-ignores]
+# Шаблон ревизии всегда импортирует op и sa — даже когда миграция ими не пользуется.
+"alembic/versions/*.py" = ["F401", "I001"]
 
 [tool.mypy]
 python_version = "3.12"
