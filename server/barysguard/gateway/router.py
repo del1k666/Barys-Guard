@@ -1,4 +1,6 @@
 import ipaddress
+import json
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -7,12 +9,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.core.config import Settings, get_settings
-from barysguard.core.errors import EnrollmentError, InvalidCsr
+from barysguard.core.errors import CommandNotDelivered, EnrollmentError, InvalidCsr
 from barysguard.db.models.agent import Agent, AgentStatus
+from barysguard.db.models.command import CommandStatus
 from barysguard.db.session import get_session
 from barysguard.gateway.deps import CLIENT_IP_HEADER, SERIAL_HEADER, current_agent
 from barysguard.gateway.schemas import (
     AgentConfigResponse,
+    CommandResultRequest,
     EnrollRequest,
     EnrollResponse,
     HeartbeatRequest,
@@ -26,8 +30,10 @@ from barysguard.pki.provider import get_ca
 from barysguard.pki.service import issue_certificate, supersede_certificate
 from barysguard.services.commands import (
     MAX_COMMANDS_PER_HEARTBEAT,
+    MAX_RESULT_BYTES,
     dequeue_commands,
     expire_stale_commands,
+    record_command_result,
 )
 from barysguard.services.config import effective_config_for_agent
 from barysguard.services.enrollment import consume_enrollment_token
@@ -208,3 +214,37 @@ async def heartbeat(
             for command in commands
         ],
     )
+
+
+@router.post("/commands/{command_id}/result")
+async def submit_command_result(
+    command_id: uuid.UUID,
+    payload: CommandResultRequest,
+    response: Response,
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    encoded = json.dumps(payload.result, separators=(",", ":"), ensure_ascii=False)
+    if len(encoded.encode("utf-8")) > MAX_RESULT_BYTES:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "command result too large")
+
+    try:
+        outcome = await record_command_result(
+            session,
+            agent_id=agent.id,
+            command_id=command_id,
+            status=CommandStatus(payload.status),
+            result=payload.result,
+        )
+    except CommandNotDelivered as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, "command was not delivered") from exc
+
+    if outcome is None:
+        # Не 403: различие в ответах позволило бы перебором идентификаторов
+        # выяснять, какие команды существуют в системе.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "command not found")
+
+    command, accepted = outcome
+    # Повтор после обрыва связи — не ошибка, но и не новое принятие.
+    response.status_code = status.HTTP_202_ACCEPTED if accepted else status.HTTP_200_OK
+    return {"status": command.status.value}

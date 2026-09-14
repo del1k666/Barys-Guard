@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -63,3 +63,8 @@ class HeartbeatResponse(BaseModel):
     config_version: int
     heartbeat_interval_seconds: int
     commands: list[QueuedCommand]
+
+
+class CommandResultRequest(BaseModel):
+    status: Literal["done", "failed"]
+    result: dict[str, Any] = Field(default_factory=dict)
