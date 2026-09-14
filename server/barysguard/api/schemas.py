@@ -4,6 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from barysguard.db.models.command import CommandType
 from barysguard.services.config import AgentConfigDocument
 
 
@@ -47,3 +48,23 @@ class EffectiveConfigResponse(BaseModel):
     # То, что агент сообщил в последнем heartbeat. Расхождение с version
     # показывает оператору, кто отстал.
     applied_version: int
+
+
+class CreateCommandRequest(BaseModel):
+    type: CommandType
+    payload: dict[str, Any] = Field(default_factory=dict)
+    # Час по умолчанию, неделя максимум: команда со сроком годности в месяц
+    # равносильна команде без срока годности.
+    ttl_seconds: int = Field(default=3600, ge=60, le=604800)
+
+
+class CommandResponse(BaseModel):
+    id: uuid.UUID
+    type: str
+    status: str
+    payload: dict[str, Any]
+    result: dict[str, Any] | None
+    created_at: datetime
+    sent_at: datetime | None
+    completed_at: datetime | None
+    expires_at: datetime

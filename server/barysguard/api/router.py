@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -8,24 +9,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from barysguard.api.deps import agent_in_scope, current_user, require_admin
 from barysguard.api.schemas import (
     AgentSummary,
+    CommandResponse,
     ConfigResponse,
     ConfigUpdateRequest,
+    CreateCommandRequest,
     CreateEnrollmentTokenRequest,
     EffectiveConfigResponse,
     EnrollmentTokenResponse,
 )
 from barysguard.core.config import Settings, get_settings
 from barysguard.db.models.agent import Agent, AgentGroup
+from barysguard.db.models.command import Command
 from barysguard.db.models.config import AgentConfig, ConfigScope
 from barysguard.db.models.user import User
 from barysguard.db.session import get_session
 from barysguard.services.audit import record_audit
+from barysguard.services.commands import queue_command
 from barysguard.services.config import (
     AgentConfigDocument,
     compute_config_version,
     effective_config_for_agent,
+    global_heartbeat_interval,
 )
 from barysguard.services.enrollment import create_enrollment_token
+from barysguard.services.presence import derive_status
 
 router = APIRouter(prefix="/api/v1", tags=["api"])
 
@@ -74,6 +81,12 @@ async def list_agents(
     if user.scope_group_id is not None:
         statement = statement.where(Agent.group_id == user.scope_group_id)
 
+    # Интервал берётся из глобальной конфигурации: собирать эффективный
+    # документ на каждую строку списка значило бы обходить дерево групп
+    # тысячи раз ради сдвига границы на десятки секунд.
+    interval = await global_heartbeat_interval(session)
+    now = datetime.now(UTC)
+
     agents = (await session.execute(statement)).scalars().all()
     return [
         AgentSummary(
@@ -81,7 +94,7 @@ async def list_agents(
             hostname=agent.hostname,
             os=agent.os,
             agent_version=agent.agent_version,
-            status=agent.status.value,
+            status=derive_status(agent, interval, now),
             last_heartbeat_at=agent.last_heartbeat_at,
         )
         for agent in agents
@@ -245,3 +258,77 @@ async def read_effective_agent_config(
         version=version,
         applied_version=agent.config_version,
     )
+
+
+def _command_response(command: Command) -> CommandResponse:
+    return CommandResponse(
+        id=command.id,
+        type=command.type.value,
+        status=command.status.value,
+        payload=command.payload,
+        result=command.result,
+        created_at=command.created_at,
+        sent_at=command.sent_at,
+        completed_at=command.completed_at,
+        expires_at=command.expires_at,
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/commands",
+    response_model=CommandResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_command(
+    agent_id: uuid.UUID,
+    payload: CreateCommandRequest,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> CommandResponse:
+    agent = await agent_in_scope(session, user, agent_id)
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "agent not found")
+
+    command = await queue_command(
+        session,
+        agent_id=agent.id,
+        command_type=payload.type,
+        payload=payload.payload,
+        created_by=user.id,
+        ttl_seconds=payload.ttl_seconds,
+    )
+
+    await record_audit(
+        session,
+        user_id=user.id,
+        action="command.create",
+        target_type="command",
+        target_id=command.id,
+        payload={"agent_id": str(agent.id), "type": payload.type.value},
+    )
+    return _command_response(command)
+
+
+@router.get("/agents/{agent_id}/commands", response_model=list[CommandResponse])
+async def list_commands(
+    agent_id: uuid.UUID,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[CommandResponse]:
+    agent = await agent_in_scope(session, user, agent_id)
+    if agent is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "agent not found")
+
+    commands = (
+        (
+            await session.execute(
+                select(Command)
+                .where(Command.agent_id == agent.id)
+                .order_by(Command.created_at.desc())
+                .limit(200)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [_command_response(command) for command in commands]
