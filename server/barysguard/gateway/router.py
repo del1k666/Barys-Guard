@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from barysguard.db.models.agent import Agent, AgentStatus
 from barysguard.db.session import get_session
 from barysguard.gateway.deps import SERIAL_HEADER, current_agent
 from barysguard.gateway.schemas import (
+    AgentConfigResponse,
     EnrollRequest,
     EnrollResponse,
     RenewRequest,
@@ -16,6 +18,7 @@ from barysguard.gateway.schemas import (
 from barysguard.pki.ca import CertificateAuthority
 from barysguard.pki.provider import get_ca
 from barysguard.pki.service import issue_certificate, supersede_certificate
+from barysguard.services.config import effective_config_for_agent
 from barysguard.services.enrollment import consume_enrollment_token
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway"])
@@ -74,12 +77,17 @@ async def enroll(
     except InvalidCsr as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid CSR") from exc
 
+    # Агент, получивший версию 0, обнаружил бы расхождение на первом же
+    # heartbeat и сходил за конфигом лишний раз. При массовом развёртывании
+    # это заметная лишняя волна.
+    document, config_version = await effective_config_for_agent(session, agent)
+
     return EnrollResponse(
         agent_id=agent.id,
         certificate_pem=certificate_pem.decode("ascii"),
         ca_pem=ca.certificate_pem.decode("ascii"),
-        config_version=agent.config_version,
-        heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
+        config_version=config_version,
+        heartbeat_interval_seconds=document["transport"]["heartbeat_interval_seconds"],
     )
 
 
@@ -113,4 +121,24 @@ async def renew(
         certificate_pem=certificate_pem.decode("ascii"),
         ca_pem=ca.certificate_pem.decode("ascii"),
         not_after=record.not_after,
+    )
+
+
+@router.get("/config", response_model=AgentConfigResponse)
+async def get_agent_config(
+    request: Request,
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    document, version = await effective_config_for_agent(session, agent)
+    etag = f'"{version}"'
+
+    # Агенты опрашивают конфиг редко, но после перезапуска сервера делают это
+    # одновременно. Пустой ответ на совпавшую версию дешевле полного документа.
+    if request.headers.get("If-None-Match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": etag})
+
+    return JSONResponse(
+        content={"version": version, "document": document},
+        headers={"ETag": etag},
     )

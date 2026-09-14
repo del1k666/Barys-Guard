@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -35,3 +36,8 @@ class RenewResponse(BaseModel):
     certificate_pem: str
     ca_pem: str
     not_after: datetime
+
+
+class AgentConfigResponse(BaseModel):
+    version: int
+    document: dict[str, Any]

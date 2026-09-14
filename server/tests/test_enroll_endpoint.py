@@ -121,3 +121,17 @@ async def test_malformed_csr_is_rejected(app_client, session):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_enroll_returns_effective_config_version(app_client, session):
+    from barysguard.services.config import AgentConfigDocument, compute_config_version
+    from tests.helpers import enroll_agent
+
+    agent = await enroll_agent(app_client, session, "enroll-config-version")
+
+    # Версия 0 заставила бы агента сходить за конфигом лишний раз
+    # на первом же heartbeat.
+    expected = compute_config_version(AgentConfigDocument().model_dump(mode="json"))
+    assert agent.body["config_version"] == expected
+    assert agent.body["heartbeat_interval_seconds"] == 30
