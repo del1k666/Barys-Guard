@@ -41,3 +41,25 @@ class RenewResponse(BaseModel):
 class AgentConfigResponse(BaseModel):
     version: int
     document: dict[str, Any]
+
+
+class HeartbeatRequest(BaseModel):
+    agent_version: str = Field(max_length=32)
+    config_version: int = Field(ge=0)
+    sent_at: datetime
+    buffered_events: int = Field(default=0, ge=0)
+    buffer_bytes: int = Field(default=0, ge=0)
+
+
+class QueuedCommand(BaseModel):
+    id: uuid.UUID
+    type: str
+    payload: dict[str, Any]
+    expires_at: datetime
+
+
+class HeartbeatResponse(BaseModel):
+    server_time: datetime
+    config_version: int
+    heartbeat_interval_seconds: int
+    commands: list[QueuedCommand]

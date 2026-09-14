@@ -10,6 +10,9 @@ VERIFY_HEADER = "X-Client-Verify"
 SERIAL_HEADER = "X-Client-Serial"
 VERIFY_SUCCESS = "SUCCESS"
 
+# Адрес из соединения для приложения всегда является адресом обратного прокси.
+CLIENT_IP_HEADER = "X-Real-IP"
+
 
 async def current_agent(
     request: Request,
