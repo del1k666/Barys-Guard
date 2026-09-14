@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
+
+from barysguard.services.config import AgentConfigDocument
 
 
 class CreateEnrollmentTokenRequest(BaseModel):
@@ -23,3 +26,24 @@ class AgentSummary(BaseModel):
     agent_version: str
     status: str
     last_heartbeat_at: datetime | None
+
+
+class ConfigUpdateRequest(BaseModel):
+    document: AgentConfigDocument
+
+
+class ConfigResponse(BaseModel):
+    scope: str
+    group_id: uuid.UUID | None
+    document: dict[str, Any]
+    version: int
+    updated_at: datetime | None
+
+
+class EffectiveConfigResponse(BaseModel):
+    agent_id: uuid.UUID
+    document: dict[str, Any]
+    version: int
+    # То, что агент сообщил в последнем heartbeat. Расхождение с version
+    # показывает оператору, кто отстал.
+    applied_version: int
