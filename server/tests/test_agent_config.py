@@ -13,6 +13,7 @@ from barysguard.services.config import (
     global_heartbeat_interval,
     merge_documents,
 )
+from tests.helpers import set_global_config
 
 
 def test_defaults_match_specification():
@@ -89,9 +90,9 @@ async def test_group_chain_merges_from_root_to_leaf(session):
     session.add(leaf)
     await session.flush()
 
+    await set_global_config(session, {"logging": {"level": "info"}})
     session.add_all(
         [
-            AgentConfig(scope=ConfigScope.GLOBAL, document={"logging": {"level": "info"}}),
             AgentConfig(
                 scope=ConfigScope.GROUP,
                 group_id=root.id,
@@ -161,12 +162,6 @@ async def test_effective_config_for_agent_uses_its_group(session):
 
 @pytest.mark.asyncio
 async def test_global_heartbeat_interval_reads_global_row(session):
-    session.add(
-        AgentConfig(
-            scope=ConfigScope.GLOBAL,
-            document={"transport": {"heartbeat_interval_seconds": 45}},
-        )
-    )
-    await session.flush()
+    await set_global_config(session, {"transport": {"heartbeat_interval_seconds": 45}})
 
     assert await global_heartbeat_interval(session) == 45

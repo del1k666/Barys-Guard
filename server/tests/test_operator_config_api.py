@@ -154,3 +154,55 @@ async def test_config_requires_api_key(app_client):
     response = await app_client.get("/api/v1/config")
 
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_second_put_updates_existing_row(app_client, session):
+    """Вторая правка идёт по ветке UPDATE, а не INSERT.
+
+    В боевой базе глобальную строку создаёт миграция данных, поэтому первый
+    же PUT попадает на UPDATE. Фикстура тестов эту строку вычищает, и без
+    отдельной проверки ветка UPDATE остаётся непройденной.
+    """
+    key = await _key(session, "cfg-twice", UserRole.ADMIN)
+    headers = {"X-Api-Key": key}
+
+    first = await app_client.put(
+        "/api/v1/config",
+        headers=headers,
+        json={"document": _document(logging={"level": "warn"})},
+    )
+    assert first.status_code == 200
+
+    second = await app_client.put(
+        "/api/v1/config",
+        headers=headers,
+        json={"document": _document(logging={"level": "debug"})},
+    )
+
+    assert second.status_code == 200
+    assert second.json()["document"]["logging"]["level"] == "debug"
+    assert second.json()["updated_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_second_put_updates_existing_group_row(app_client, session):
+    group = AgentGroup(name="twice")
+    session.add(group)
+    await session.flush()
+    key = await _key(session, "cfg-group-twice", UserRole.ADMIN)
+    headers = {"X-Api-Key": key}
+
+    await app_client.put(
+        f"/api/v1/groups/{group.id}/config",
+        headers=headers,
+        json={"document": _document(logging={"level": "warn"})},
+    )
+    second = await app_client.put(
+        f"/api/v1/groups/{group.id}/config",
+        headers=headers,
+        json={"document": _document(logging={"level": "debug"})},
+    )
+
+    assert second.status_code == 200
+    assert second.json()["document"]["logging"]["level"] == "debug"

@@ -86,6 +86,81 @@ PY
 curl -s localhost:8000/api/v1/agents -H "X-Api-Key: $BG_ADMIN_KEY"
 ```
 
+## Проверка heartbeat и команд
+
+Серийный номер берётся из выданного сертификата и приводится к нижнему регистру
+без ведущих нулей — в такой форме он лежит в `agent_certificates`. Заголовки
+`X-Client-*` здесь подставляются вручную вместо nginx.
+
+```bash
+export BG_SERIAL="<серийный номер сертификата>"
+export BG_AGENT_ID="<agent_id из шага 4>"
+
+# 1. Оператор ставит команду в очередь
+curl -s -X POST localhost:8000/api/v1/agents/$BG_AGENT_ID/commands \
+     -H "X-Api-Key: $BG_ADMIN_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"type": "ping", "payload": {}, "ttl_seconds": 3600}'
+
+# 2. Heartbeat агента: команда должна прийти ровно один раз
+heartbeat() {
+  curl -s -X POST localhost:8000/gateway/v1/heartbeat \
+       -H "X-Client-Verify: SUCCESS" \
+       -H "X-Client-Serial: $BG_SERIAL" \
+       -H "Content-Type: application/json" \
+       -d "{\"agent_version\": \"0.1.0\", \"config_version\": 0,
+            \"sent_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+            \"buffered_events\": 0, \"buffer_bytes\": 0}"
+}
+heartbeat
+
+# 3. Повторный heartbeat: список commands обязан быть пуст
+heartbeat
+
+# 4. Агент отчитывается о выполнении (идентификатор команды из шага 2)
+curl -s -X POST localhost:8000/gateway/v1/commands/<id команды>/result \
+     -H "X-Client-Verify: SUCCESS" \
+     -H "X-Client-Serial: $BG_SERIAL" \
+     -H "Content-Type: application/json" \
+     -d '{"status": "done", "result": {"pong": true}}'
+```
+
+Ожидаемое: шаг 2 возвращает одну команду, шаг 3 — пустой список, шаг 4 отвечает
+`202`. Повтор шага 4 отвечает `200` и сохранённый результат не меняет.
+
+## Проверка наследования конфигурации
+
+```bash
+# 1. Текущая конфигурация
+curl -s localhost:8000/api/v1/config -H "X-Api-Key: $BG_ADMIN_KEY"
+
+# 2. Правка глобальной конфигурации. PUT заменяет документ целиком,
+#    поэтому передаётся полный набор секций.
+curl -s -X PUT localhost:8000/api/v1/config \
+     -H "X-Api-Key: $BG_ADMIN_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"document": {
+            "transport": {"heartbeat_interval_seconds": 15, "event_batch_max": 500,
+                          "event_batch_max_bytes": 4194304,
+                          "backoff_base_seconds": 1, "backoff_max_seconds": 300},
+            "buffer": {"max_bytes": 524288000, "max_age_days": 7},
+            "logging": {"level": "debug"},
+            "policies": {}}}'
+
+# 3. Агент забирает документ и видит новую версию
+curl -s localhost:8000/gateway/v1/config \
+     -H "X-Client-Verify: SUCCESS" \
+     -H "X-Client-Serial: $BG_SERIAL"
+
+# 4. Эффективная конфигурация агента глазами оператора. applied_version
+#    отличается от version, пока агент не прислал heartbeat с новой версией:
+#    так видно, кто отстал.
+curl -s localhost:8000/api/v1/agents/$BG_AGENT_ID/config -H "X-Api-Key: $BG_ADMIN_KEY"
+```
+
+Ожидаемое: после шага 2 `version` в ответе шага 3 отличается от полученной при
+регистрации, а `heartbeat_interval_seconds` равен 15.
+
 ## Тесты
 
 Интеграционные тесты идут на настоящем PostgreSQL: на каждый прогон создаётся

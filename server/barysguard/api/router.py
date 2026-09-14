@@ -126,6 +126,11 @@ async def _store_config(
     row.updated_by = user.id
     await session.flush()
 
+    # После UPDATE с onupdate=func.now() значение вычислено сервером БД,
+    # и атрибут помечен просроченным. Обычное чтение попыталось бы сходить
+    # в базу синхронно и упало бы с MissingGreenlet: обновляем явно.
+    await session.refresh(row, ["updated_at"])
+
     await record_audit(
         session,
         user_id=user.id,

@@ -71,3 +71,26 @@ async def enroll_agent(
         headers={"X-Client-Verify": "SUCCESS", "X-Client-Serial": serial},
         body=body,
     )
+
+
+async def set_global_config(session: AsyncSession, document: dict) -> None:
+    """Задать глобальную конфигурацию.
+
+    Строка правится, а не добавляется: глобальная строка в системе ровно
+    одна, её создаёт миграция данных, и частичный уникальный индекс
+    запрещает вторую.
+    """
+    from sqlalchemy import select
+
+    from barysguard.db.models.config import AgentConfig, ConfigScope
+
+    row = (
+        await session.execute(select(AgentConfig).where(AgentConfig.scope == ConfigScope.GLOBAL))
+    ).scalar_one_or_none()
+
+    if row is None:
+        session.add(AgentConfig(scope=ConfigScope.GLOBAL, document=document))
+    else:
+        row.document = document
+
+    await session.flush()

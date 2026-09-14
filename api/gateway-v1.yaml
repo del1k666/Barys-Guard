@@ -122,6 +122,81 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/v1/config:
+    get:
+      tags:
+      - gateway
+      summary: Get Agent Config
+      operationId: get_agent_config_gateway_v1_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentConfigResponse'
+  /gateway/v1/heartbeat:
+    post:
+      tags:
+      - gateway
+      summary: Heartbeat
+      operationId: heartbeat_gateway_v1_heartbeat_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HeartbeatRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HeartbeatResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/v1/commands/{command_id}/result:
+    post:
+      tags:
+      - gateway
+      summary: Submit Command Result
+      operationId: submit_command_result_gateway_v1_commands__command_id__result_post
+      parameters:
+      - name: command_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Command Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandResultRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Submit Command Result Gateway V1 Commands  Command
+                  Id  Result Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/enrollment-tokens:
     post:
       tags:
@@ -163,8 +238,263 @@ paths:
                   $ref: '#/components/schemas/AgentSummary'
                 type: array
                 title: Response List Agents Api V1 Agents Get
+  /api/v1/config:
+    get:
+      tags:
+      - api
+      summary: Read Global Config
+      operationId: read_global_config_api_v1_config_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+    put:
+      tags:
+      - api
+      summary: Replace Global Config
+      operationId: replace_global_config_api_v1_config_put
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUpdateRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/groups/{group_id}/config:
+    get:
+      tags:
+      - api
+      summary: Read Group Config
+      operationId: read_group_config_api_v1_groups__group_id__config_get
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - api
+      summary: Replace Group Config
+      operationId: replace_group_config_api_v1_groups__group_id__config_put
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - api
+      summary: Delete Group Config
+      operationId: delete_group_config_api_v1_groups__group_id__config_delete
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/{agent_id}/config:
+    get:
+      tags:
+      - api
+      summary: Read Effective Agent Config
+      operationId: read_effective_agent_config_api_v1_agents__agent_id__config_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EffectiveConfigResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/{agent_id}/commands:
+    post:
+      tags:
+      - api
+      summary: Create Command
+      operationId: create_command_api_v1_agents__agent_id__commands_post
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommandRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - api
+      summary: List Commands
+      operationId: list_commands_api_v1_agents__agent_id__commands_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CommandResponse'
+                title: Response List Commands Api V1 Agents  Agent Id  Commands Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    AgentConfigDocument:
+      properties:
+        transport:
+          $ref: '#/components/schemas/TransportConfig'
+          default:
+            heartbeat_interval_seconds: 30
+            event_batch_max: 500
+            event_batch_max_bytes: 4194304
+            backoff_base_seconds: 1
+            backoff_max_seconds: 300
+        buffer:
+          $ref: '#/components/schemas/BufferConfig'
+          default:
+            max_bytes: 524288000
+            max_age_days: 7
+        logging:
+          $ref: '#/components/schemas/LoggingConfig'
+          default:
+            level: info
+        policies:
+          additionalProperties: true
+          type: object
+          title: Policies
+      additionalProperties: false
+      type: object
+      title: AgentConfigDocument
+      description: 'Полная форма конфигурации агента.
+
+
+        extra="forbid" на каждом уровне обязателен: опечатка вроде
+
+        heartbeat_intervall иначе молча не применится, и разбор такого
+
+        инцидента занимает часы.'
+    AgentConfigResponse:
+      properties:
+        version:
+          type: integer
+          title: Version
+        document:
+          additionalProperties: true
+          type: object
+          title: Document
+      type: object
+      required:
+      - version
+      - document
+      title: AgentConfigResponse
     AgentSummary:
       properties:
         id:
@@ -198,6 +528,157 @@ components:
       - status
       - last_heartbeat_at
       title: AgentSummary
+    BufferConfig:
+      properties:
+        max_bytes:
+          type: integer
+          minimum: 1048576.0
+          title: Max Bytes
+          default: 524288000
+        max_age_days:
+          type: integer
+          maximum: 365.0
+          minimum: 1.0
+          title: Max Age Days
+          default: 7
+      additionalProperties: false
+      type: object
+      title: BufferConfig
+    CommandResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          title: Type
+        status:
+          type: string
+          title: Status
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Result
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+      type: object
+      required:
+      - id
+      - type
+      - status
+      - payload
+      - result
+      - created_at
+      - sent_at
+      - completed_at
+      - expires_at
+      title: CommandResponse
+    CommandResultRequest:
+      properties:
+        status:
+          type: string
+          enum:
+          - done
+          - failed
+          title: Status
+        result:
+          additionalProperties: true
+          type: object
+          title: Result
+      type: object
+      required:
+      - status
+      title: CommandResultRequest
+    CommandType:
+      type: string
+      enum:
+      - ping
+      - refresh_config
+      - collect_diagnostics
+      title: CommandType
+    ConfigResponse:
+      properties:
+        scope:
+          type: string
+          title: Scope
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+        document:
+          additionalProperties: true
+          type: object
+          title: Document
+        version:
+          type: integer
+          title: Version
+        updated_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Updated At
+      type: object
+      required:
+      - scope
+      - group_id
+      - document
+      - version
+      - updated_at
+      title: ConfigResponse
+    ConfigUpdateRequest:
+      properties:
+        document:
+          $ref: '#/components/schemas/AgentConfigDocument'
+      type: object
+      required:
+      - document
+      title: ConfigUpdateRequest
+    CreateCommandRequest:
+      properties:
+        type:
+          $ref: '#/components/schemas/CommandType'
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        ttl_seconds:
+          type: integer
+          maximum: 604800.0
+          minimum: 60.0
+          title: Ttl Seconds
+          default: 3600
+      type: object
+      required:
+      - type
+      title: CreateCommandRequest
     CreateEnrollmentTokenRequest:
       properties:
         max_uses:
@@ -221,6 +702,29 @@ components:
           title: Group Id
       type: object
       title: CreateEnrollmentTokenRequest
+    EffectiveConfigResponse:
+      properties:
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        document:
+          additionalProperties: true
+          type: object
+          title: Document
+        version:
+          type: integer
+          title: Version
+        applied_version:
+          type: integer
+          title: Applied Version
+      type: object
+      required:
+      - agent_id
+      - document
+      - version
+      - applied_version
+      title: EffectiveConfigResponse
     EnrollRequest:
       properties:
         token:
@@ -292,6 +796,60 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    HeartbeatRequest:
+      properties:
+        agent_version:
+          type: string
+          maxLength: 32
+          title: Agent Version
+        config_version:
+          type: integer
+          minimum: 0.0
+          title: Config Version
+        sent_at:
+          type: string
+          format: date-time
+          title: Sent At
+        buffered_events:
+          type: integer
+          minimum: 0.0
+          title: Buffered Events
+          default: 0
+        buffer_bytes:
+          type: integer
+          minimum: 0.0
+          title: Buffer Bytes
+          default: 0
+      type: object
+      required:
+      - agent_version
+      - config_version
+      - sent_at
+      title: HeartbeatRequest
+    HeartbeatResponse:
+      properties:
+        server_time:
+          type: string
+          format: date-time
+          title: Server Time
+        config_version:
+          type: integer
+          title: Config Version
+        heartbeat_interval_seconds:
+          type: integer
+          title: Heartbeat Interval Seconds
+        commands:
+          items:
+            $ref: '#/components/schemas/QueuedCommand'
+          type: array
+          title: Commands
+      type: object
+      required:
+      - server_time
+      - config_version
+      - heartbeat_interval_seconds
+      - commands
+      title: HeartbeatResponse
     HostFacts:
       properties:
         machine_id:
@@ -327,6 +885,44 @@ components:
       - arch
       - agent_version
       title: HostFacts
+    LoggingConfig:
+      properties:
+        level:
+          type: string
+          enum:
+          - debug
+          - info
+          - warn
+          - error
+          title: Level
+          default: info
+      additionalProperties: false
+      type: object
+      title: LoggingConfig
+    QueuedCommand:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          title: Type
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+      type: object
+      required:
+      - id
+      - type
+      - payload
+      - expires_at
+      title: QueuedCommand
     RenewRequest:
       properties:
         csr_pem:
@@ -355,6 +951,41 @@ components:
       - ca_pem
       - not_after
       title: RenewResponse
+    TransportConfig:
+      properties:
+        heartbeat_interval_seconds:
+          type: integer
+          maximum: 3600.0
+          minimum: 5.0
+          title: Heartbeat Interval Seconds
+          default: 30
+        event_batch_max:
+          type: integer
+          maximum: 10000.0
+          minimum: 1.0
+          title: Event Batch Max
+          default: 500
+        event_batch_max_bytes:
+          type: integer
+          maximum: 67108864.0
+          minimum: 65536.0
+          title: Event Batch Max Bytes
+          default: 4194304
+        backoff_base_seconds:
+          type: integer
+          maximum: 60.0
+          minimum: 1.0
+          title: Backoff Base Seconds
+          default: 1
+        backoff_max_seconds:
+          type: integer
+          maximum: 3600.0
+          minimum: 1.0
+          title: Backoff Max Seconds
+          default: 300
+      additionalProperties: false
+      type: object
+      title: TransportConfig
     ValidationError:
       properties:
         loc:
