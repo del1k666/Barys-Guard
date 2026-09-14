@@ -16,7 +16,10 @@
 - Тесты требуют запущенного Docker: PostgreSQL поднимается через testcontainers. Проверить до начала работы: `docker version`.
 - Все переменные окружения имеют префикс `BG_`.
 - Код и комментарии — на русском, как в существующих модулях. Комментарий объясняет **почему**, а не **что**.
-- `ruff check .`, `ruff format --check .` и `mypy .` обязаны быть чистыми перед каждым коммитом.
+- `ruff check .`, `ruff format --check .` и `mypy barysguard` обязаны быть чистыми перед каждым коммитом.
+  Проверка типов охватывает только пакет: тесты под `strict` не аннотированы, и так же поступал план 1A.
+- Правило `S108` ruff считает строку `"/tmp"` работой с временным каталогом. В тестовых данных
+  политик брать образцы путей вида `/srv/docs`, а не глушить правило.
 - Каждое сообщение коммита завершается двумя строками:
   ```
   Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -24,6 +27,7 @@
   ```
   Далее в плане они не повторяются в каждом блоке — добавлять их нужно всегда.
 - Миграции генерируются через `alembic revision --autogenerate`, вручную не пишутся, кроме миграций данных.
+- **Перечисления хранятся именами членов в верхнем регистре.** При `native_enum=False` SQLAlchemy пишет в колонку `GLOBAL`, а не `global` — так уже устроены `agent_status` и `user_role`. Любое условие в `CheckConstraint` и в `postgresql_where` обязано сравнивать с именем: `scope = 'GLOBAL'`, `status = 'QUEUED'`. Сравнение со значением молча не сработает: частичный индекс не покроет ни одной строки, а `CHECK` отвергнет все.
 - Лицензии зависимостей — только пермиссивные. Новых зависимостей этот план не вводит.
 
 ## Структура файлов
@@ -116,9 +120,9 @@ def test_merge_is_recursive_for_dictionaries():
 
 def test_merge_replaces_lists_entirely():
     # Дополнение списков сделало бы невыразимым снятие унаследованного пути.
-    base = {"policies": {"excluded": ["/tmp", "/var"]}}
-    overlay = {"policies": {"excluded": ["/tmp"]}}
-    assert merge_documents(base, overlay)["policies"]["excluded"] == ["/tmp"]
+    base = {"policies": {"excluded": ["/srv/docs", "/srv/reports"]}}
+    overlay = {"policies": {"excluded": ["/srv/docs"]}}
+    assert merge_documents(base, overlay)["policies"]["excluded"] == ["/srv/docs"]
 
 
 def test_version_ignores_key_order():
@@ -295,9 +299,10 @@ class AgentConfig(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "(scope = 'global' AND group_id IS NULL) "
-            "OR (scope = 'group' AND group_id IS NOT NULL)",
-            name="ck_agent_configs_scope_group",
+            "(scope = 'GLOBAL' AND group_id IS NULL) "
+            "OR (scope = 'GROUP' AND group_id IS NOT NULL)",
+            # Соглашение об именовании подставит префикс ck_agent_configs_ само.
+            name="scope_group",
         ),
         # Две глобальные строки сделали бы эффективный конфиг зависящим от
         # порядка выборки. Такая ошибка проявляется не при записи, а спустя
@@ -306,13 +311,13 @@ class AgentConfig(Base):
             "uq_agent_configs_global",
             "scope",
             unique=True,
-            postgresql_where=text("scope = 'global'"),
+            postgresql_where=text("scope = 'GLOBAL'"),
         ),
         Index(
             "uq_agent_configs_group",
             "group_id",
             unique=True,
-            postgresql_where=text("scope = 'group'"),
+            postgresql_where=text("scope = 'GROUP'"),
         ),
     )
 ```
@@ -511,14 +516,14 @@ alembic revision --autogenerate -m "agent configs"
         "agent_configs",
         ["scope"],
         unique=True,
-        postgresql_where=sa.text("scope = 'global'"),
+        postgresql_where=sa.text("scope = 'GLOBAL'"),
     )
     op.create_index(
         "uq_agent_configs_group",
         "agent_configs",
         ["group_id"],
         unique=True,
-        postgresql_where=sa.text("scope = 'group'"),
+        postgresql_where=sa.text("scope = 'GROUP'"),
     )
 ```
 
@@ -533,7 +538,7 @@ Expected: PASS, 12 тестов.
 - [ ] **Шаг 10: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/db/models/config.py barysguard/services/config.py \
         barysguard/db/models/__init__.py barysguard/core/errors.py \
         tests/conftest.py tests/test_agent_config.py alembic/versions/
@@ -818,7 +823,7 @@ Expected: PASS.
 - [ ] **Шаг 9: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/gateway/ tests/
 git commit -m "feat: agent config endpoint with etag revalidation"
 ```
@@ -1152,7 +1157,7 @@ class Command(Base):
             "ix_commands_queued",
             "agent_id",
             "created_at",
-            postgresql_where=text("status = 'queued'"),
+            postgresql_where=text("status = 'QUEUED'"),
         ),
     )
 ```
@@ -1315,7 +1320,7 @@ from barysguard.db.models.command import Command, CommandStatus, CommandType
 alembic revision --autogenerate -m "commands"
 ```
 
-Проверить наличие `create_table("commands", ...)` и частичного индекса `ix_commands_queued` с `postgresql_where=sa.text("status = 'queued'")`; дописать индекс вручную, если автогенерация его не внесла.
+Проверить наличие `create_table("commands", ...)` и частичного индекса `ix_commands_queued` с `postgresql_where=sa.text("status = 'QUEUED'")`; дописать индекс вручную, если автогенерация его не внесла.
 
 - [ ] **Шаг 8: Запустить тесты**
 
@@ -1328,7 +1333,7 @@ Expected: PASS, 10 тестов.
 - [ ] **Шаг 9: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/db/models/command.py barysguard/services/commands.py \
         barysguard/db/models/__init__.py barysguard/core/errors.py \
         tests/conftest.py tests/test_commands_service.py alembic/versions/
@@ -1632,7 +1637,7 @@ Expected: PASS, 9 тестов.
 - [ ] **Шаг 6: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/gateway/ tests/test_heartbeat_endpoint.py
 git commit -m "feat: agent heartbeat with clock skew and command delivery"
 ```
@@ -1872,7 +1877,7 @@ Expected: PASS.
 - [ ] **Шаг 6: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/ tests/
 git commit -m "feat: idempotent command result endpoint"
 ```
@@ -2282,7 +2287,7 @@ Expected: PASS, 9 тестов.
 - [ ] **Шаг 7: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/api/ tests/test_operator_config_api.py
 git commit -m "feat: operator api for agent configuration"
 ```
@@ -2674,7 +2679,7 @@ Expected: PASS, 11 тестов.
 - [ ] **Шаг 8: Проверить линт и типы, зафиксировать**
 
 ```bash
-ruff check . && ruff format --check . && mypy .
+ruff check . && ruff format --check . && mypy barysguard
 git add barysguard/api/ barysguard/services/presence.py tests/
 git commit -m "feat: operator command api and derived offline status"
 ```
@@ -2725,13 +2730,13 @@ def upgrade() -> None:
     op.execute(
         sa.text(
             "INSERT INTO agent_configs (id, scope, group_id, document, updated_at) "
-            "VALUES (:id, 'global', NULL, CAST(:document AS jsonb), now())"
+            "VALUES (:id, 'GLOBAL', NULL, CAST(:document AS jsonb), now())"
         ).bindparams(id=str(uuid.uuid4()), document=json.dumps(DEFAULT_DOCUMENT))
     )
 
 
 def downgrade() -> None:
-    op.execute("DELETE FROM agent_configs WHERE scope = 'global'")
+    op.execute("DELETE FROM agent_configs WHERE scope = 'GLOBAL'")
 ```
 
 - [ ] **Шаг 2: Прогнать весь набор тестов**
@@ -2812,7 +2817,7 @@ curl -s localhost:8000/gateway/v1/config \
 - [ ] **Шаг 7: Финальная проверка и фиксация**
 
 ```bash
-ruff check . && ruff format --check . && mypy . && python -m pytest -q
+ruff check . && ruff format --check . && mypy barysguard && python -m pytest -q
 git add ../api/gateway-v1.yaml ../docs/QUICKSTART.md alembic/versions/
 git commit -m "docs: contract and quickstart for heartbeat, config and commands"
 ```

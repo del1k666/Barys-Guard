@@ -28,3 +28,12 @@ class PkiError(BarysGuardError):
 
 class InvalidCsr(PkiError):
     pass
+
+
+class ConfigTreeError(BarysGuardError):
+    """Дерево групп не даёт построить цепочку наследования.
+
+    Возникает при цикле parent_id либо при чрезмерной глубине. Дерево строят
+    операторы, а ON DELETE SET NULL не исключает цикл полностью; бесконечный
+    обход в обработчике запроса недопустим.
+    """
