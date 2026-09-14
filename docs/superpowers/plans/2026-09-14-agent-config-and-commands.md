@@ -73,7 +73,7 @@
   - `global_heartbeat_interval(session) -> int`
   - `ConfigTreeError` из `barysguard.core.errors`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `server/tests/test_agent_config.py`:
 
@@ -235,7 +235,7 @@ async def test_global_heartbeat_interval_reads_global_row(session):
     assert await global_heartbeat_interval(session) == 45
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_agent_config.py -q
@@ -243,7 +243,7 @@ python -m pytest tests/test_agent_config.py -q
 
 Expected: `ModuleNotFoundError: No module named 'barysguard.db.models.config'`
 
-- [ ] **Шаг 3: Добавить исключение в `server/barysguard/core/errors.py`**
+- [x] **Шаг 3: Добавить исключение в `server/barysguard/core/errors.py`**
 
 Дописать в конец файла:
 
@@ -257,7 +257,7 @@ class ConfigTreeError(Exception):
     """
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/db/models/config.py`**
+- [x] **Шаг 4: Создать `server/barysguard/db/models/config.py`**
 
 ```python
 import enum
@@ -322,7 +322,7 @@ class AgentConfig(Base):
     )
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/services/config.py`**
+- [x] **Шаг 5: Создать `server/barysguard/services/config.py`**
 
 ```python
 import hashlib
@@ -483,7 +483,7 @@ async def global_heartbeat_interval(session: AsyncSession) -> int:
     return int(document["transport"]["heartbeat_interval_seconds"])
 ```
 
-- [ ] **Шаг 6: Зарегистрировать модель в `server/barysguard/db/models/__init__.py`**
+- [x] **Шаг 6: Зарегистрировать модель в `server/barysguard/db/models/__init__.py`**
 
 Добавить строку импорта рядом с существующими (точную форму файла посмотреть перед правкой — импорты перечислены списком, и порядок поддерживается `ruff`):
 
@@ -493,7 +493,7 @@ from barysguard.db.models.config import AgentConfig, ConfigScope
 
 и дописать `"AgentConfig"`, `"ConfigScope"` в `__all__`.
 
-- [ ] **Шаг 7: Добавить очистку таблицы в `server/tests/conftest.py`**
+- [x] **Шаг 7: Добавить очистку таблицы в `server/tests/conftest.py`**
 
 В фикстуре `app_client` в строке `TRUNCATE` добавить `agent_configs` первым элементом:
 
@@ -502,7 +502,7 @@ from barysguard.db.models.config import AgentConfig, ConfigScope
                 "agent_groups, audit_log, users RESTART IDENTITY CASCADE"
 ```
 
-- [ ] **Шаг 8: Сгенерировать миграцию**
+- [x] **Шаг 8: Сгенерировать миграцию**
 
 ```bash
 alembic revision --autogenerate -m "agent configs"
@@ -527,7 +527,7 @@ alembic revision --autogenerate -m "agent configs"
     )
 ```
 
-- [ ] **Шаг 9: Запустить тесты**
+- [x] **Шаг 9: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_agent_config.py -q
@@ -535,7 +535,7 @@ python -m pytest tests/test_agent_config.py -q
 
 Expected: PASS, 12 тестов.
 
-- [ ] **Шаг 10: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 10: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -564,7 +564,7 @@ git commit -m "feat: agent configuration inherited across the group tree"
   - `AgentConfigResponse` (поля `version: int`, `document: dict[str, Any]`), эндпоинт `GET /gateway/v1/config`
   - `tests/helpers.py`: `build_csr() -> str`, `EnrolledAgent` (поля `agent_id: uuid.UUID`, `serial: str`, `headers: dict[str, str]`, `body: dict`), `enroll_agent(app_client, session, machine_id, group_id=None) -> EnrolledAgent`
 
-- [ ] **Шаг 1: Вынести помощники регистрации в `server/tests/helpers.py`**
+- [x] **Шаг 1: Вынести помощники регистрации в `server/tests/helpers.py`**
 
 Функции `_csr` и `_enroll` уже есть в `server/tests/test_mtls_identity.py`, но каждому следующему тестовому модулю нужны и заголовки mTLS, и группа агента. Выносим их один раз.
 
@@ -646,7 +646,7 @@ async def enroll_agent(
 
 Затем в `server/tests/test_mtls_identity.py` удалить локальные `_csr` и `_enroll`, импортировать `enroll_agent` из `tests.helpers` и заменить вызовы. Прогнать `python -m pytest tests/test_mtls_identity.py -q` — восемь тестов должны остаться зелёными. Это подтверждает, что помощник эквивалентен вынесенному коду, до того как на нём будут построены новые тесты.
 
-- [ ] **Шаг 2: Написать падающий тест**
+- [x] **Шаг 2: Написать падающий тест**
 
 Создать `server/tests/test_config_endpoint.py`:
 
@@ -717,7 +717,7 @@ async def test_config_requires_client_certificate(app_client):
     assert response.status_code == 403
 ```
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_config_endpoint.py -q
@@ -725,7 +725,7 @@ python -m pytest tests/test_config_endpoint.py -q
 
 Expected: FAIL, `404 Not Found` на `/gateway/v1/config`.
 
-- [ ] **Шаг 4: Добавить схему в `server/barysguard/gateway/schemas.py`**
+- [x] **Шаг 4: Добавить схему в `server/barysguard/gateway/schemas.py`**
 
 ```python
 class AgentConfigResponse(BaseModel):
@@ -735,7 +735,7 @@ class AgentConfigResponse(BaseModel):
 
 Дописать `from typing import Any` в импорты файла.
 
-- [ ] **Шаг 5: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
+- [x] **Шаг 5: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
 
 ```python
 @router.get("/config", response_model=AgentConfigResponse)
@@ -760,7 +760,7 @@ async def get_agent_config(
 
 Добавить импорты: `from fastapi.responses import JSONResponse`, `from barysguard.services.config import effective_config_for_agent`, `AgentConfigResponse` в существующий импорт схем.
 
-- [ ] **Шаг 6: Поправить `enroll` в том же файле**
+- [x] **Шаг 6: Поправить `enroll` в том же файле**
 
 Заменить вычисление двух полей ответа. Было:
 
@@ -793,7 +793,7 @@ async def get_agent_config(
 
 Параметр `settings` в сигнатуре `enroll` остаётся: он используется для `settings.agent_cert_days`.
 
-- [ ] **Шаг 7: Дописать тест на регистрацию**
+- [x] **Шаг 7: Дописать тест на регистрацию**
 
 В `server/tests/test_enroll_endpoint.py` добавить:
 
@@ -812,7 +812,7 @@ async def test_enroll_returns_effective_config_version(app_client, session):
     assert agent.body["heartbeat_interval_seconds"] == 30
 ```
 
-- [ ] **Шаг 8: Запустить тесты**
+- [x] **Шаг 8: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_config_endpoint.py tests/test_enroll_endpoint.py -q
@@ -820,7 +820,7 @@ python -m pytest tests/test_config_endpoint.py tests/test_enroll_endpoint.py -q
 
 Expected: PASS.
 
-- [ ] **Шаг 9: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 9: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -858,7 +858,7 @@ git commit -m "feat: agent config endpoint with etag revalidation"
     по содержимому полей.
   - `CommandNotDelivered` из `barysguard.core.errors`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `server/tests/test_commands_service.py`:
 
@@ -1068,7 +1068,7 @@ async def test_concurrent_dequeue_delivers_each_command_once(migrated_database_u
     assert len(first) + len(second) == 4
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_commands_service.py -q
@@ -1076,7 +1076,7 @@ python -m pytest tests/test_commands_service.py -q
 
 Expected: `ModuleNotFoundError: No module named 'barysguard.db.models.command'`
 
-- [ ] **Шаг 3: Добавить исключение в `server/barysguard/core/errors.py`**
+- [x] **Шаг 3: Добавить исключение в `server/barysguard/core/errors.py`**
 
 ```python
 class CommandNotDelivered(Exception):
@@ -1087,7 +1087,7 @@ class CommandNotDelivered(Exception):
     """
 ```
 
-- [ ] **Шаг 4: Создать `server/barysguard/db/models/command.py`**
+- [x] **Шаг 4: Создать `server/barysguard/db/models/command.py`**
 
 ```python
 import enum
@@ -1162,7 +1162,7 @@ class Command(Base):
     )
 ```
 
-- [ ] **Шаг 5: Создать `server/barysguard/services/commands.py`**
+- [x] **Шаг 5: Создать `server/barysguard/services/commands.py`**
 
 ```python
 import uuid
@@ -1297,7 +1297,7 @@ async def record_command_result(
     return command, True
 ```
 
-- [ ] **Шаг 6: Зарегистрировать модель и очистку таблицы**
+- [x] **Шаг 6: Зарегистрировать модель и очистку таблицы**
 
 В `server/barysguard/db/models/__init__.py`:
 
@@ -1314,7 +1314,7 @@ from barysguard.db.models.command import Command, CommandStatus, CommandType
                 "agents, agent_groups, audit_log, users RESTART IDENTITY CASCADE"
 ```
 
-- [ ] **Шаг 7: Сгенерировать миграцию**
+- [x] **Шаг 7: Сгенерировать миграцию**
 
 ```bash
 alembic revision --autogenerate -m "commands"
@@ -1322,7 +1322,7 @@ alembic revision --autogenerate -m "commands"
 
 Проверить наличие `create_table("commands", ...)` и частичного индекса `ix_commands_queued` с `postgresql_where=sa.text("status = 'QUEUED'")`; дописать индекс вручную, если автогенерация его не внесла.
 
-- [ ] **Шаг 8: Запустить тесты**
+- [x] **Шаг 8: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_commands_service.py -q
@@ -1330,7 +1330,7 @@ python -m pytest tests/test_commands_service.py -q
 
 Expected: PASS, 10 тестов.
 
-- [ ] **Шаг 9: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 9: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -1353,7 +1353,7 @@ git commit -m "feat: command queue with expiry and skip-locked delivery"
 - Consumes: `effective_config_for_agent` (задача 1), `expire_stale_commands`, `dequeue_commands`, `MAX_COMMANDS_PER_HEARTBEAT` (задача 3), `current_agent`.
 - Produces: `HeartbeatRequest`, `HeartbeatResponse`, `QueuedCommand`; эндпоинт `POST /gateway/v1/heartbeat`.
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `server/tests/test_heartbeat_endpoint.py`:
 
@@ -1528,7 +1528,7 @@ async def test_heartbeat_requires_client_certificate(app_client):
 
 Серийный номер в `agent_certificates` хранится нормализованным (см. `normalize_serial` в `barysguard/pki/service.py`). Если сравнение в тесте отзыва не находит строку, свериться с тем, как серийный номер записывается при выпуске, и привести значение к той же форме — придумывать своё преобразование не нужно.
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_heartbeat_endpoint.py -q
@@ -1536,7 +1536,7 @@ python -m pytest tests/test_heartbeat_endpoint.py -q
 
 Expected: FAIL, `404 Not Found`.
 
-- [ ] **Шаг 3: Добавить схемы в `server/barysguard/gateway/schemas.py`**
+- [x] **Шаг 3: Добавить схемы в `server/barysguard/gateway/schemas.py`**
 
 ```python
 class HeartbeatRequest(BaseModel):
@@ -1561,7 +1561,7 @@ class HeartbeatResponse(BaseModel):
     commands: list[QueuedCommand]
 ```
 
-- [ ] **Шаг 4: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
+- [x] **Шаг 4: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
 
 ```python
 @router.post("/heartbeat", response_model=HeartbeatResponse)
@@ -1626,7 +1626,7 @@ async def heartbeat(
 CLIENT_IP_HEADER = "X-Real-IP"
 ```
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_heartbeat_endpoint.py -q
@@ -1634,7 +1634,7 @@ python -m pytest tests/test_heartbeat_endpoint.py -q
 
 Expected: PASS, 9 тестов.
 
-- [ ] **Шаг 6: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 6: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -1655,7 +1655,7 @@ git commit -m "feat: agent heartbeat with clock skew and command delivery"
 - Consumes: `record_command_result`, `MAX_RESULT_BYTES`, `CommandNotDelivered` (задача 3).
 - Produces: `CommandResultRequest`; эндпоинт `POST /gateway/v1/commands/{command_id}/result`.
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `server/tests/test_command_result_endpoint.py`:
 
@@ -1805,7 +1805,7 @@ async def test_result_requires_client_certificate(app_client):
     assert response.status_code == 403
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_command_result_endpoint.py -q
@@ -1813,7 +1813,7 @@ python -m pytest tests/test_command_result_endpoint.py -q
 
 Expected: FAIL, `404 Not Found` на эндпоинте.
 
-- [ ] **Шаг 3: Добавить схему в `server/barysguard/gateway/schemas.py`**
+- [x] **Шаг 3: Добавить схему в `server/barysguard/gateway/schemas.py`**
 
 ```python
 class CommandResultRequest(BaseModel):
@@ -1823,7 +1823,7 @@ class CommandResultRequest(BaseModel):
 
 Дописать `from typing import Any, Literal` в импорты.
 
-- [ ] **Шаг 4: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
+- [x] **Шаг 4: Добавить эндпоинт в `server/barysguard/gateway/router.py`**
 
 ```python
 @router.post("/commands/{command_id}/result")
@@ -1866,7 +1866,7 @@ async def submit_command_result(
 
 Добавить импорты: `import json`, `import uuid`, `CommandStatus`, `record_command_result`, `MAX_RESULT_BYTES`, `CommandNotDelivered`, `CommandResultRequest`.
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_command_result_endpoint.py tests/test_commands_service.py -q
@@ -1874,7 +1874,7 @@ python -m pytest tests/test_command_result_endpoint.py tests/test_commands_servi
 
 Expected: PASS.
 
-- [ ] **Шаг 6: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 6: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -1895,7 +1895,7 @@ git commit -m "feat: idempotent command result endpoint"
 - Consumes: `current_user`, `require_role` из `barysguard.api.deps`; `AgentConfigDocument`, `effective_document`, `effective_config_for_agent`, `compute_config_version` (задача 1); `record_audit`.
 - Produces: `ConfigResponse`, `EffectiveConfigResponse`; эндпоинты `GET|PUT /api/v1/config`, `GET|PUT|DELETE /api/v1/groups/{group_id}/config`, `GET /api/v1/agents/{agent_id}/config`.
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `server/tests/test_operator_config_api.py`. Пользователи создаются через `create_user`, как в `server/tests/test_operator_api.py`; полный документ для `PUT` берётся из `AgentConfigDocument`, потому что замена полная, а не частичная.
 
@@ -2058,7 +2058,7 @@ async def test_config_requires_api_key(app_client):
     assert response.status_code == 401
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_operator_config_api.py -q
@@ -2066,7 +2066,7 @@ python -m pytest tests/test_operator_config_api.py -q
 
 Expected: FAIL, `404 Not Found`.
 
-- [ ] **Шаг 3: Добавить схемы в `server/barysguard/api/schemas.py`**
+- [x] **Шаг 3: Добавить схемы в `server/barysguard/api/schemas.py`**
 
 ```python
 class ConfigUpdateRequest(BaseModel):
@@ -2090,7 +2090,7 @@ class EffectiveConfigResponse(BaseModel):
 
 `applied_version` — то, что агент сообщил в последнем heartbeat. Расхождение с `version` показывает оператору, кто отстал.
 
-- [ ] **Шаг 4: Добавить вспомогательную функцию области видимости в `server/barysguard/api/deps.py`**
+- [x] **Шаг 4: Добавить вспомогательную функцию области видимости в `server/barysguard/api/deps.py`**
 
 ```python
 async def agent_in_scope(
@@ -2113,7 +2113,7 @@ async def agent_in_scope(
 
 Сравнение плоское, а не по поддереву: ровно так область видимости уже применяется в существующем `GET /api/v1/agents`. Расширение до поддерева — подпроект 4, и делать его здесь в одном месте из двух значило бы развести поведение.
 
-- [ ] **Шаг 5: Добавить эндпоинты в `server/barysguard/api/router.py`**
+- [x] **Шаг 5: Добавить эндпоинты в `server/barysguard/api/router.py`**
 
 ```python
 async def _load_config_row(
@@ -2276,7 +2276,7 @@ async def read_effective_agent_config(
 
 Обратить внимание: полная замена документа (`PUT` без частичного слияния) намеренна. Частичное обновление на уровне HTTP плюс слияние по дереву групп дало бы два разных механизма слияния в одном контуре, и разбираться, какой применился, пришлось бы по исходникам.
 
-- [ ] **Шаг 6: Запустить тесты**
+- [x] **Шаг 6: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_operator_config_api.py -q
@@ -2284,7 +2284,7 @@ python -m pytest tests/test_operator_config_api.py -q
 
 Expected: PASS, 9 тестов.
 
-- [ ] **Шаг 7: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 7: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -2310,7 +2310,7 @@ git commit -m "feat: operator api for agent configuration"
   - `derive_status(agent: Agent, interval_seconds: int, now: datetime) -> str`
   - `CreateCommandRequest`, `CommandResponse`; эндпоинты `POST|GET /api/v1/agents/{agent_id}/commands`.
 
-- [ ] **Шаг 1: Написать падающий тест на присутствие**
+- [x] **Шаг 1: Написать падающий тест на присутствие**
 
 Создать `server/tests/test_agent_presence.py`:
 
@@ -2373,7 +2373,7 @@ def test_revoked_survives_silence():
     assert derive_status(agent, 30, now) == "revoked"
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 python -m pytest tests/test_agent_presence.py -q
@@ -2381,7 +2381,7 @@ python -m pytest tests/test_agent_presence.py -q
 
 Expected: `ModuleNotFoundError: No module named 'barysguard.services.presence'`
 
-- [ ] **Шаг 3: Создать `server/barysguard/services/presence.py`**
+- [x] **Шаг 3: Создать `server/barysguard/services/presence.py`**
 
 ```python
 from datetime import datetime, timedelta
@@ -2415,7 +2415,7 @@ def derive_status(agent: Agent, interval_seconds: int, now: datetime) -> str:
     return agent.status.value
 ```
 
-- [ ] **Шаг 4: Написать падающий тест на операторский API команд**
+- [x] **Шаг 4: Написать падающий тест на операторский API команд**
 
 Создать `server/tests/test_operator_commands_api.py`:
 
@@ -2545,7 +2545,7 @@ async def test_silent_agent_is_listed_offline(app_client, session):
     assert entry["status"] == "offline"
 ```
 
-- [ ] **Шаг 5: Добавить схемы в `server/barysguard/api/schemas.py`**
+- [x] **Шаг 5: Добавить схемы в `server/barysguard/api/schemas.py`**
 
 ```python
 class CreateCommandRequest(BaseModel):
@@ -2568,7 +2568,7 @@ class CommandResponse(BaseModel):
     expires_at: datetime
 ```
 
-- [ ] **Шаг 6: Добавить эндпоинты и правку списка агентов в `server/barysguard/api/router.py`**
+- [x] **Шаг 6: Добавить эндпоинты и правку списка агентов в `server/barysguard/api/router.py`**
 
 ```python
 def _command_response(command: Command) -> CommandResponse:
@@ -2668,7 +2668,7 @@ async def list_commands(
     ]
 ```
 
-- [ ] **Шаг 7: Запустить тесты**
+- [x] **Шаг 7: Запустить тесты**
 
 ```bash
 python -m pytest tests/test_agent_presence.py tests/test_operator_commands_api.py -q
@@ -2676,7 +2676,7 @@ python -m pytest tests/test_agent_presence.py tests/test_operator_commands_api.p
 
 Expected: PASS, 11 тестов.
 
-- [ ] **Шаг 8: Проверить линт и типы, зафиксировать**
+- [x] **Шаг 8: Проверить линт и типы, зафиксировать**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard
@@ -2694,7 +2694,7 @@ git commit -m "feat: operator command api and derived offline status"
 - Modify: `docs/QUICKSTART.md`
 - Test: весь набор
 
-- [ ] **Шаг 1: Создать миграцию с начальной глобальной конфигурацией**
+- [x] **Шаг 1: Создать миграцию с начальной глобальной конфигурацией**
 
 ```bash
 alembic revision -m "seed global agent config"
@@ -2739,7 +2739,7 @@ def downgrade() -> None:
     op.execute("DELETE FROM agent_configs WHERE scope = 'GLOBAL'")
 ```
 
-- [ ] **Шаг 2: Прогнать весь набор тестов**
+- [x] **Шаг 2: Прогнать весь набор тестов**
 
 ```bash
 python -m pytest -q
@@ -2749,7 +2749,7 @@ Expected: PASS. Ожидаемое количество — 58 прежних п
 
 Если падают тесты 1A, разбираться по существу: наиболее вероятная причина — новые таблицы не попали в `TRUNCATE` фикстуры `app_client`, и данные текут между тестами.
 
-- [ ] **Шаг 3: Проверить, что миграции накатываются и откатываются**
+- [x] **Шаг 3: Проверить, что миграции накатываются и откатываются**
 
 ```bash
 alembic upgrade head
@@ -2759,7 +2759,7 @@ alembic upgrade head
 
 Expected: без ошибок. Откат частичных индексов и `CHECK` требует явных имён — они заданы в моделях, поэтому должен пройти.
 
-- [ ] **Шаг 4: Перевыгрузить контракт OpenAPI**
+- [x] **Шаг 4: Перевыгрузить контракт OpenAPI**
 
 Посмотреть, как это делалось в шаге 9 задачи 7 плана 1A (`docs/superpowers/plans/2026-09-08-server-foundation-pki.md`), и повторить той же командой, чтобы формат файла не разошёлся.
 
@@ -2771,7 +2771,7 @@ print(yaml.safe_dump(create_app().openapi(), allow_unicode=True, sort_keys=False
 
 Убедиться, что в файле появились `/gateway/v1/heartbeat`, `/gateway/v1/config` и `/gateway/v1/commands/{command_id}/result`.
 
-- [ ] **Шаг 5: Дописать раздел в `docs/QUICKSTART.md`**
+- [x] **Шаг 5: Дописать раздел в `docs/QUICKSTART.md`**
 
 После существующей проверки регистрации добавить:
 
@@ -2810,11 +2810,11 @@ curl -s localhost:8000/gateway/v1/config \
 ```
 ````
 
-- [ ] **Шаг 6: Выполнить проверку из QUICKSTART целиком**
+- [x] **Шаг 6: Выполнить проверку из QUICKSTART целиком**
 
 Поднять стек, пройти инструкцию от создания токена до повторного heartbeat. Убедиться глазами: команда приходит один раз, второй heartbeat отдаёт пустой список, правка конфигурации меняет `config_version` в ответе.
 
-- [ ] **Шаг 7: Финальная проверка и фиксация**
+- [x] **Шаг 7: Финальная проверка и фиксация**
 
 ```bash
 ruff check . && ruff format --check . && mypy barysguard && python -m pytest -q
