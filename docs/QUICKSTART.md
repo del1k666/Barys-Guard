@@ -267,14 +267,87 @@ openssl x509 -in /var/lib/barysguard/pki/ca.crt -outform der | sha256sum
 ради `RestartPreventExitStatus=2` в юните systemd: отозванного агента
 не нужно поднимать заново.
 
-### Важно: heartbeat требует nginx
+### Полный стенд с nginx
 
 Личность агента сервер определяет по заголовкам `X-Client-*`, которые
-проставляет nginx после проверки клиентского сертификата. Стенд
-`deploy/docker-compose.dev.yml` поднимает только PostgreSQL, а uvicorn
-слушает открытый HTTP — на таком стенде проходит регистрация, но не
-heartbeat. Для полной проверки нужен обратный прокси из
-`deploy/nginx/barysguard.conf`.
+проставляет nginx после проверки клиентского сертификата. На голом
+`docker-compose.dev.yml` проходит только регистрация: она идёт по пути,
+не требующему сертификата. Для heartbeat, команд и конфигурации нужен
+обратный прокси.
+
+Сначала выпустить серверный сертификат внутренним CA стенда. Он подписывает
+и клиентские сертификаты, поэтому агент проверит цепочку тем же файлом:
+
+```bash
+cd server
+export BG_TLS_DIR="$PWD/.local/tls"
+mkdir -p "$BG_TLS_DIR"
+
+.venv/bin/python - <<'PY'
+import datetime as dt, ipaddress, os
+from pathlib import Path
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import NameOID
+
+ca_dir, out = Path(os.environ["BG_CA_DIR"]), Path(os.environ["BG_TLS_DIR"])
+ca_cert = x509.load_pem_x509_certificate((ca_dir / "ca.crt").read_bytes())
+ca_key = serialization.load_pem_private_key(
+    (ca_dir / "ca.key").read_bytes(), password=os.environ["BG_CA_PASSPHRASE"].encode()
+)
+
+key = ec.generate_private_key(ec.SECP256R1())
+now = dt.datetime.now(dt.UTC)
+cert = (
+    x509.CertificateBuilder()
+    .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]))
+    .issuer_name(ca_cert.subject).public_key(key.public_key())
+    .serial_number(x509.random_serial_number())
+    .not_valid_before(now - dt.timedelta(minutes=5))
+    .not_valid_after(now + dt.timedelta(days=365))
+    .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+    .add_extension(x509.SubjectAlternativeName([
+        x509.DNSName("localhost"), x509.DNSName("host.docker.internal"),
+        x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+    ]), critical=False)
+    .sign(ca_key, hashes.SHA256())
+)
+(out / "server.crt").write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+(out / "server.key").write_bytes(key.private_bytes(
+    serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+    serialization.NoEncryption()))
+(out / "ca.crt").write_bytes((ca_dir / "ca.crt").read_bytes())
+PY
+```
+
+Затем поднять прокси и перезапустить приложение так, чтобы контейнер его видел:
+
+```bash
+# Приложение слушает 0.0.0.0, иначе из контейнера до него не достучаться.
+# На общей сети так делать не следует.
+.venv/bin/uvicorn barysguard.main:app --host 0.0.0.0 --port 8000 &
+
+docker compose -f deploy/docker-compose.dev.yml \
+               -f deploy/docker-compose.nginx.yml up -d
+```
+
+Проверка контура целиком:
+
+```bash
+./barysguard-agent enroll -server https://localhost:8443 \
+  -token "BG-ENROLL-..." -ca-file "$BG_TLS_DIR/ca.crt" -data-dir ./agent-data
+./barysguard-agent run -data-dir ./agent-data
+```
+
+После первого heartbeat `GET /api/v1/agents` показывает агента со статусом
+`active` и непустым `last_heartbeat_at`, а поставленные команды приходят
+с результатами.
+
+> **Если порт 5432 уже занят.** Локально установленный PostgreSQL перехватит
+> порт раньше контейнера, и приложение молча уйдёт работать в него: ошибки
+> не будет, но таблицы окажутся не там, где вы их ищете. Проверить, кто
+> слушает порт, стоит до запуска миграций.
 
 ### Тесты агента
 
