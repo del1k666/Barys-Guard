@@ -63,7 +63,8 @@ curl -s -X POST localhost:8000/api/v1/enrollment-tokens \
      -H "Content-Type: application/json" \
      -d '{"max_uses": 1}'
 
-# 4. Агент регистрируется (эмуляция; настоящий агент — план 1B)
+# 4. Агент регистрируется. Ниже — эмуляция curl'ом, она показывает сам
+#    протокол. Настоящий агент — в разделе «Подключение агента».
 openssl ecparam -genkey -name prime256v1 -out /tmp/agent.key
 openssl req -new -key /tmp/agent.key -subj "/CN=ignored" -out /tmp/agent.csr
 
@@ -198,3 +199,98 @@ export BG_TEST_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhos
 `proxy_set_header` в этом файле — единственное, что мешает клиенту объявить себя
 чужим агентом: они безусловно затирают одноимённые заголовки из запроса.
 Приложение слушает только `127.0.0.1` и наружу напрямую не выставляется.
+
+## Подключение агента
+
+Агент — отдельный модуль Go в каталоге `agent/`. Общего кода с сервером нет:
+их связывает только контракт `api/gateway-v1.yaml`.
+
+### Сборка
+
+```bash
+cd agent
+go build -o barysguard-agent ./cmd/barysguard-agent
+
+# Кросс-сборка под второй целевой хост
+GOOS=linux   go build -o barysguard-agent       ./cmd/barysguard-agent
+GOOS=windows go build -o barysguard-agent.exe   ./cmd/barysguard-agent
+```
+
+Версия зашивается при сборке: `-ldflags "-X main.agentVersion=0.1.0"`.
+
+### Регистрация
+
+Агент обязан знать удостоверяющий центр **до** первого запроса. Сертификат CA
+берётся из дистрибутива — его отдаёт `GET /gateway/v1/ca`, и он же лежит
+в `$BG_CA_DIR/ca.crt` на сервере.
+
+```bash
+./barysguard-agent enroll \
+  -server https://dlp.example:8443 \
+  -token "BG-ENROLL-..." \
+  -ca-file /path/to/ca.crt \
+  -data-dir ./agent-data
+```
+
+Если файла CA под рукой нет, его можно забрать по сети, но **только**
+с проверкой отпечатка:
+
+```bash
+# Отпечаток считается на сервере и передаётся установщику отдельно от сети
+openssl x509 -in /var/lib/barysguard/pki/ca.crt -outform der | sha256sum
+
+./barysguard-agent enroll -server https://dlp.example:8443 \
+  -token "BG-ENROLL-..." -ca-pin "<полученный sha256>"
+```
+
+Без `-ca-file` или `-ca-pin` регистрация отказывает. Это не придирка:
+скачать CA по непроверенному каналу и тут же начать ему доверять — ровно тот
+перехват, против которого и вводится mTLS.
+
+Повторная регистрация поверх действующей отклоняется; перезаписать личность
+агента можно только явным `-force`.
+
+### Работа
+
+```bash
+./barysguard-agent run    -data-dir ./agent-data   # цикл heartbeat
+./barysguard-agent status -data-dir ./agent-data   # локальная диагностика
+```
+
+`run` шлёт heartbeat с интервалом, который задаёт сервер, забирает
+конфигурацию при расхождении версий, исполняет команды `ping`,
+`refresh_config` и `collect_diagnostics` и продлевает сертификат
+по достижении 2/3 срока.
+
+Коды возврата: `0` — штатное завершение по сигналу, `2` — сервер отказал
+в обслуживании (сертификат отозван), `1` — прочие ошибки. Код `2` выделен
+ради `RestartPreventExitStatus=2` в юните systemd: отозванного агента
+не нужно поднимать заново.
+
+### Важно: heartbeat требует nginx
+
+Личность агента сервер определяет по заголовкам `X-Client-*`, которые
+проставляет nginx после проверки клиентского сертификата. Стенд
+`deploy/docker-compose.dev.yml` поднимает только PostgreSQL, а uvicorn
+слушает открытый HTTP — на таком стенде проходит регистрация, но не
+heartbeat. Для полной проверки нужен обратный прокси из
+`deploy/nginx/barysguard.conf`.
+
+### Тесты агента
+
+```bash
+cd agent
+go vet ./... && go test ./...
+```
+
+Тесты транспорта поднимают `httptest` с настоящим TLS и требованием
+клиентского сертификата, поэтому проверяют, что агент его действительно
+предъявляет. Сквозной тест против живого сервера вынесен под build tag
+и в обычный прогон не входит:
+
+```bash
+go test -tags e2e ./e2e/ -v \
+  -server http://127.0.0.1:8000 \
+  -token "BG-ENROLL-..." \
+  -ca /var/lib/barysguard/pki/ca.crt
+```

@@ -3823,14 +3823,25 @@ docker version
 - [ ] **Шаг 2: Поднять сервер и создать токен**
 
 ```bash
+docker compose -f deploy/docker-compose.dev.yml up -d
+
 cd server
-docker compose -f ../deploy/docker-compose.dev.yml up -d
-.venv/Scripts/python.exe -m alembic upgrade head
-.venv/Scripts/python.exe -m barysguard.cli create-user --email operator@example.com --role admin
-.venv/Scripts/python.exe -m uvicorn barysguard.main:app --port 8000 &
+export BG_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhost:5432/barysguard"
+export BG_CA_DIR="$PWD/.local/pki"
+export BG_CA_PASSPHRASE="смените-это-значение"
+
+.venv/Scripts/alembic.exe upgrade head
+.venv/Scripts/barysguard-admin.exe create-user --username admin --role admin
+.venv/Scripts/uvicorn.exe barysguard.main:app --port 8000 &
 ```
 
-Точные имена команд CLI сверить с `server/barysguard/cli.py` перед запуском — они могли измениться.
+Ключ API печатается один раз — сохранить его в `BG_ADMIN_KEY`.
+
+**Важно:** стенд поднимает только PostgreSQL, uvicorn слушает открытый HTTP.
+Личность агента сервер берёт из заголовков `X-Client-*`, которые проставляет
+nginx после проверки клиентского сертификата. На таком стенде проходит
+регистрация, но не heartbeat: для него нужен обратный прокси из
+`deploy/nginx/barysguard.conf`.
 
 - [ ] **Шаг 3: Написать сквозной тест**
 
