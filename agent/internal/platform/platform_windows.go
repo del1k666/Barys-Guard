@@ -11,15 +11,37 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// Полный доступ только SYSTEM (SY) и Administrators (BA). Буква P означает
-// protected: наследование от родительского каталога отключено, иначе права,
-// заданные на %ProgramData%, вернули бы доступ группе Users.
-const restrictedSDDL = "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+// Полный доступ SYSTEM (SY), Administrators (BA) и владельцу процесса.
+// Буква P означает protected: наследование от родительского каталога
+// отключено, иначе права, заданные на %ProgramData%, вернули бы доступ
+// группе Users.
+//
+// Владелец процесса в списке обязателен. В бою агент работает службой
+// под SYSTEM, и тогда эта запись совпадает с первой. Но список, отбирающий
+// доступ у того, кто эти файлы создаёт, не защищает ни от чего: запустивший
+// процесс пользователь всегда может сменить владельца файла и прочитать его.
+// Зато без этой записи агент, запущенный не из-под SYSTEM, запирает сам себя.
+const restrictedSDDLTemplate = "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;%s)"
 
 type guard struct{}
 
+// currentUserSID отдаёт SID владельца текущего процесса.
+func currentUserSID() (string, error) {
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		return "", err
+	}
+	return user.User.Sid.String(), nil
+}
+
 func applyDACL(path string) error {
-	descriptor, err := windows.SecurityDescriptorFromString(restrictedSDDL)
+	sid, err := currentUserSID()
+	if err != nil {
+		return err
+	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf(restrictedSDDLTemplate, sid),
+	)
 	if err != nil {
 		return err
 	}
