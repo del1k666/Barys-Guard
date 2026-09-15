@@ -74,7 +74,7 @@
   - `hostfacts.Facts` со всеми полями схемы `HostFacts` контракта
   - `hostfacts.Collect(g platform.Guard, agentVersion string) (Facts, error)`
 
-- [ ] **Шаг 1: Создать модуль**
+- [x] **Шаг 1: Создать модуль**
 
 ```bash
 mkdir -p agent/internal/platform agent/internal/hostfacts agent/cmd/barysguard-agent
@@ -85,7 +85,7 @@ go get golang.org/x/sys@latest
 
 Затем открыть `agent/go.mod` и убедиться, что директива версии — `go 1.23`. Если тулчейн записал более новую, исправить вручную: модуль обязан собираться средой сборки, а не только рабочей машиной.
 
-- [ ] **Шаг 2: Написать падающий тест**
+- [x] **Шаг 2: Написать падающий тест**
 
 Создать `agent/internal/platform/platform_test.go`:
 
@@ -184,7 +184,7 @@ func TestOSVersionIsNotEmpty(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/platform/ -v
@@ -192,7 +192,7 @@ go test ./internal/platform/ -v
 
 Expected: FAIL — `no required module provides package .../internal/platform`.
 
-- [ ] **Шаг 4: Создать `agent/internal/platform/platform.go`**
+- [x] **Шаг 4: Создать `agent/internal/platform/platform.go`**
 
 ```go
 // Package platform закрывает всё, что различается между Windows и Linux.
@@ -225,7 +225,7 @@ type Guard interface {
 func New() Guard { return guard{} }
 ```
 
-- [ ] **Шаг 5: Создать `agent/internal/platform/platform_linux.go`**
+- [x] **Шаг 5: Создать `agent/internal/platform/platform_linux.go`**
 
 ```go
 //go:build linux
@@ -295,7 +295,7 @@ func (guard) OSVersion() (string, error) {
 }
 ```
 
-- [ ] **Шаг 6: Создать `agent/internal/platform/platform_windows.go`**
+- [x] **Шаг 6: Создать `agent/internal/platform/platform_windows.go`**
 
 ```go
 //go:build windows
@@ -424,7 +424,7 @@ func (guard) OSVersion() (string, error) {
 }
 ```
 
-- [ ] **Шаг 7: Запустить тесты платформы**
+- [x] **Шаг 7: Запустить тесты платформы**
 
 ```bash
 go test ./internal/platform/ -v
@@ -432,7 +432,7 @@ go test ./internal/platform/ -v
 
 Expected: PASS, 5 тестов (один пропущен на Windows).
 
-- [ ] **Шаг 8: Написать падающий тест фактов хоста**
+- [x] **Шаг 8: Написать падающий тест фактов хоста**
 
 Создать `agent/internal/hostfacts/hostfacts_test.go`:
 
@@ -506,7 +506,7 @@ func TestLongOSVersionIsTruncatedToContractLimit(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 9: Создать `agent/internal/hostfacts/hostfacts.go`**
+- [x] **Шаг 9: Создать `agent/internal/hostfacts/hostfacts.go`**
 
 ```go
 // Package hostfacts собирает сведения о хосте для регистрации агента.
@@ -579,7 +579,7 @@ func Collect(guard platform.Guard, agentVersion string) (Facts, error) {
 }
 ```
 
-- [ ] **Шаг 10: Запустить тесты и проверить обе сборки**
+- [x] **Шаг 10: Запустить тесты и проверить обе сборки**
 
 ```bash
 go vet ./... && go test ./... -v
@@ -589,7 +589,7 @@ GOOS=windows go build ./...
 
 Expected: PASS, 8 тестов; обе сборки без ошибок.
 
-- [ ] **Шаг 11: Зафиксировать**
+- [x] **Шаг 11: Зафиксировать**
 
 ```bash
 cd ..
@@ -617,7 +617,7 @@ git commit -m "feat: agent platform layer and host facts"
   - `config.Settings{ServerURL, LogLevel string}`, `LoadSettings(Layout) (Settings, error)`, `SaveSettings(Layout, Settings, platform.Guard) error`
   - `config.State{AgentID string; ConfigVersion int; Document map[string]any}`, `LoadState(Layout) (State, error)`, `SaveState(Layout, State, platform.Guard) error`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/config/config_test.go`:
 
@@ -744,7 +744,7 @@ func TestSettingsSurviveRoundTrip(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/config/ -v
@@ -752,7 +752,7 @@ go test ./internal/config/ -v
 
 Expected: FAIL — пакет `internal/config` не существует.
 
-- [ ] **Шаг 3: Создать `agent/internal/config/layout.go`**
+- [x] **Шаг 3: Создать `agent/internal/config/layout.go`**
 
 ```go
 // Package config задаёт раскладку файлов агента на диске и читает их.
@@ -834,7 +834,7 @@ func WriteAtomic(path string, data []byte, guard platform.Guard) error {
 }
 ```
 
-- [ ] **Шаг 4: Создать `agent/internal/config/settings.go`**
+- [x] **Шаг 4: Создать `agent/internal/config/settings.go`**
 
 ```go
 package config
@@ -917,7 +917,7 @@ func SaveState(layout Layout, state State, guard platform.Guard) error {
 }
 ```
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 ```bash
 go test ./internal/config/ -v
@@ -925,7 +925,7 @@ go test ./internal/config/ -v
 
 Expected: PASS, 6 тестов.
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/config && git commit -m "feat: agent on-disk layout with atomic writes"
@@ -951,7 +951,7 @@ cd .. && git add agent/internal/config && git commit -m "feat: agent on-disk lay
   - `keystore.LoadCAPool(layout config.Layout) (*x509.CertPool, error)`
   - `keystore.RenewalDue(cert *x509.Certificate, now time.Time) bool`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/keystore/keystore_test.go`:
 
@@ -1106,7 +1106,7 @@ func TestRenewalDueAtTwoThirdsOfLifetime(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/keystore/ -v
@@ -1114,7 +1114,7 @@ go test ./internal/keystore/ -v
 
 Expected: FAIL — пакет `internal/keystore` не существует.
 
-- [ ] **Шаг 3: Создать `agent/internal/keystore/keystore.go`**
+- [x] **Шаг 3: Создать `agent/internal/keystore/keystore.go`**
 
 ```go
 // Package keystore хранит ключ и сертификат агента на диске.
@@ -1240,7 +1240,7 @@ func RenewalDue(cert *x509.Certificate, now time.Time) bool {
 }
 ```
 
-- [ ] **Шаг 4: Запустить тесты**
+- [x] **Шаг 4: Запустить тесты**
 
 ```bash
 go test ./internal/keystore/ -v
@@ -1248,7 +1248,7 @@ go test ./internal/keystore/ -v
 
 Expected: PASS, 5 тестов (один с подтестами).
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/keystore && git commit -m "feat: agent keystore with p256 keys and renewal threshold"
@@ -1268,13 +1268,13 @@ cd .. && git add agent/internal/keystore && git commit -m "feat: agent keystore 
 - Consumes: `hostfacts.Facts`.
 - Produces: `transport.EnrollRequest`, `EnrollResponse`, `RenewRequest`, `RenewResponse`, `HeartbeatRequest`, `HeartbeatResponse`, `QueuedCommand`, `ConfigResponse`, `CommandResultRequest`; константы `StatusDone = "done"`, `StatusFailed = "failed"`.
 
-- [ ] **Шаг 1: Добавить тестовую зависимость**
+- [x] **Шаг 1: Добавить тестовую зависимость**
 
 ```bash
 cd agent && go get gopkg.in/yaml.v3@latest
 ```
 
-- [ ] **Шаг 2: Написать падающий тест**
+- [x] **Шаг 2: Написать падающий тест**
 
 Создать `agent/internal/transport/contract_test.go`:
 
@@ -1391,7 +1391,7 @@ func TestNoStructFieldIsAbsentFromContract(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/transport/ -v
@@ -1399,7 +1399,7 @@ go test ./internal/transport/ -v
 
 Expected: FAIL — пакет `internal/transport` не существует.
 
-- [ ] **Шаг 4: Создать `agent/internal/transport/types.go`**
+- [x] **Шаг 4: Создать `agent/internal/transport/types.go`**
 
 ```go
 // Package transport реализует протокол агента. Это единственный пакет,
@@ -1478,7 +1478,7 @@ type CommandResultRequest struct {
 }
 ```
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 ```bash
 go test ./internal/transport/ -v
@@ -1486,7 +1486,7 @@ go test ./internal/transport/ -v
 
 Expected: PASS, 2 теста с подтестами по каждой схеме.
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/transport agent/go.mod agent/go.sum
@@ -1512,7 +1512,7 @@ git commit -m "feat: agent contract types checked against the openapi document"
   - `transport.FetchCA(ctx context.Context, serverURL, pin string) ([]byte, error)`
   - `transport.PinOf(caPEM []byte) (string, error)`
 
-- [ ] **Шаг 1: Написать помощник выпуска сертификатов для тестов**
+- [x] **Шаг 1: Написать помощник выпуска сертификатов для тестов**
 
 Создать `agent/internal/transport/testca_test.go`:
 
@@ -1607,7 +1607,7 @@ func (c *testCA) issue(t *testing.T, commonName, serverName string) tls.Certific
 }
 ```
 
-- [ ] **Шаг 2: Написать падающий тест клиента**
+- [x] **Шаг 2: Написать падающий тест клиента**
 
 Создать `agent/internal/transport/client_test.go`:
 
@@ -1781,7 +1781,7 @@ func errorsAs(err error, target any) bool { return errors.As(err, target) }
 
 и добавить `"errors"` в импорты файла.
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/transport/ -run TestMutual -v
@@ -1789,7 +1789,7 @@ go test ./internal/transport/ -run TestMutual -v
 
 Expected: FAIL — `undefined: transport.NewMutual`.
 
-- [ ] **Шаг 4: Создать `agent/internal/transport/client.go`**
+- [x] **Шаг 4: Создать `agent/internal/transport/client.go`**
 
 ```go
 package transport
@@ -1962,7 +1962,7 @@ func FetchCA(ctx context.Context, serverURL, pin string) ([]byte, error) {
 }
 ```
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 Тесты клиента обращаются к `Whoami`, который появится в задаче 6. Сейчас прогон обязан падать именно на этом:
 
@@ -1972,7 +1972,7 @@ go test ./internal/transport/ -v
 
 Expected: FAIL — `client.Whoami undefined`. Это ожидаемо и закрывается следующей задачей.
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/transport
@@ -1997,7 +1997,7 @@ git commit -m "feat: agent tls client with pinned ca bootstrap"
   - `Config(ctx, etag string) (ConfigResponse, bool, error)` — второе значение `true`, если сервер ответил `304`
   - `CommandResult(ctx, commandID string, req CommandResultRequest) error`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/transport/methods_test.go`:
 
@@ -2161,7 +2161,7 @@ func TestCommandResultTargetsItsCommand(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/transport/ -v
@@ -2169,7 +2169,7 @@ go test ./internal/transport/ -v
 
 Expected: FAIL — `client.Enroll undefined`.
 
-- [ ] **Шаг 3: Создать `agent/internal/transport/methods.go`**
+- [x] **Шаг 3: Создать `agent/internal/transport/methods.go`**
 
 ```go
 package transport
@@ -2284,7 +2284,7 @@ func (c *Client) CommandResult(ctx context.Context, commandID string, in Command
 }
 ```
 
-- [ ] **Шаг 4: Запустить весь пакет транспорта**
+- [x] **Шаг 4: Запустить весь пакет транспорта**
 
 ```bash
 go test ./internal/transport/ -v
@@ -2292,7 +2292,7 @@ go test ./internal/transport/ -v
 
 Expected: PASS — тесты задач 4, 5 и 6 целиком.
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/transport
@@ -2316,7 +2316,7 @@ git commit -m "feat: agent protocol methods with etag revalidation"
   - `runner.JitterInterval(d time.Duration, random *rand.Rand) time.Duration`
   - Константы `DefaultBackoffBase = time.Second`, `DefaultBackoffMax = 300 * time.Second`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/runner/backoff_test.go`:
 
@@ -2408,7 +2408,7 @@ func TestJitterIntervalActuallyVaries(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/runner/ -v
@@ -2416,7 +2416,7 @@ go test ./internal/runner/ -v
 
 Expected: FAIL — пакет `internal/runner` не существует.
 
-- [ ] **Шаг 3: Создать `agent/internal/runner/backoff.go`**
+- [x] **Шаг 3: Создать `agent/internal/runner/backoff.go`**
 
 ```go
 // Package runner отвечает за расписание работы агента: цикл heartbeat,
@@ -2480,7 +2480,7 @@ func JitterInterval(interval time.Duration, random *rand.Rand) time.Duration {
 }
 ```
 
-- [ ] **Шаг 4: Запустить тесты**
+- [x] **Шаг 4: Запустить тесты**
 
 ```bash
 go test ./internal/runner/ -v
@@ -2488,7 +2488,7 @@ go test ./internal/runner/ -v
 
 Expected: PASS, 6 тестов.
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/runner
@@ -2512,7 +2512,7 @@ git commit -m "feat: agent backoff with full jitter"
   - `runner.Diagnostics` — структура с полями `AgentVersion string`, `StartedAt time.Time`, `CertNotAfter time.Time`, `LastHeartbeatAt time.Time`, `ConfigVersion int`
   - `runner.NewDispatcher(refresh func(context.Context) (int, error), diagnostics func() Diagnostics) Dispatcher`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/runner/commands_test.go`:
 
@@ -2638,7 +2638,7 @@ func TestOversizedResultIsTruncated(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/runner/ -run TestPing -v
@@ -2646,7 +2646,7 @@ go test ./internal/runner/ -run TestPing -v
 
 Expected: FAIL — `undefined: runner.NewDispatcher`.
 
-- [ ] **Шаг 3: Создать `agent/internal/runner/commands.go`**
+- [x] **Шаг 3: Создать `agent/internal/runner/commands.go`**
 
 ```go
 package runner
@@ -2758,7 +2758,7 @@ func (d Dispatcher) Execute(ctx context.Context, command transport.QueuedCommand
 }
 ```
 
-- [ ] **Шаг 4: Запустить тесты**
+- [x] **Шаг 4: Запустить тесты**
 
 ```bash
 go test ./internal/runner/ -v
@@ -2766,7 +2766,7 @@ go test ./internal/runner/ -v
 
 Expected: PASS, 12 тестов (задачи 7 и 8).
 
-- [ ] **Шаг 5: Зафиксировать**
+- [x] **Шаг 5: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/runner
@@ -2794,7 +2794,7 @@ git commit -m "feat: agent command dispatcher with result size guard"
   - `runner.ErrRevoked` — часовой для `403`
   - `runner.MaxPendingResults = 100`
 
-- [ ] **Шаг 1: Написать падающий тест**
+- [x] **Шаг 1: Написать падающий тест**
 
 Создать `agent/internal/runner/agent_test.go`:
 
@@ -3047,11 +3047,11 @@ func errorsIs(err, target error) bool { return errors.Is(err, target) }
 
 плюс `"errors"` в импорты. Помощники `newRunnerCA`, `newRunnerTLSServer` — копии `newTestCA` и `newTLSServer` из задачи 5, перенесённые в `agent/internal/runner/testca_test.go`: пакеты разные, и экспортировать тестовый CA ради этого не стоит.
 
-- [ ] **Шаг 2: Скопировать помощник тестового CA**
+- [x] **Шаг 2: Скопировать помощник тестового CA**
 
 Создать `agent/internal/runner/testca_test.go` — тот же код, что в `agent/internal/transport/testca_test.go` из задачи 5, с двумя переименованиями: `newTestCA` → `newRunnerCA`, `newTLSServer` → `newRunnerTLSServer`, и `package runner_test` в первой строке.
 
-- [ ] **Шаг 3: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 3: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./internal/runner/ -run TestRunOnce -v
@@ -3059,7 +3059,7 @@ go test ./internal/runner/ -run TestRunOnce -v
 
 Expected: FAIL — `undefined: runner.New`.
 
-- [ ] **Шаг 4: Создать `agent/internal/runner/agent.go`**
+- [x] **Шаг 4: Создать `agent/internal/runner/agent.go`**
 
 ```go
 package runner
@@ -3316,7 +3316,7 @@ func (a *Agent) MaybeRenew(ctx context.Context, leaf *x509.Certificate) error {
 }
 ```
 
-- [ ] **Шаг 5: Запустить тесты**
+- [x] **Шаг 5: Запустить тесты**
 
 ```bash
 go test ./internal/runner/ -v
@@ -3324,7 +3324,7 @@ go test ./internal/runner/ -v
 
 Expected: PASS, 19 тестов (задачи 7, 8 и 9).
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/internal/runner
@@ -3344,7 +3344,7 @@ git commit -m "feat: agent heartbeat loop with command execution and renewal"
 - Consumes: всё предыдущее.
 - Produces: бинарь `barysguard-agent` с подкомандами `enroll`, `run`, `status`; `runEnroll(opts enrollOptions) error`.
 
-- [ ] **Шаг 1: Написать падающий тест регистрации**
+- [x] **Шаг 1: Написать падающий тест регистрации**
 
 Создать `agent/cmd/barysguard-agent/enroll_test.go`:
 
@@ -3464,7 +3464,7 @@ func selfSignedPEM(t *testing.T) []byte {
 
 Импорты файла: `crypto/ecdsa`, `crypto/elliptic`, `crypto/rand`, `crypto/x509`, `crypto/x509/pkix`, `encoding/json`, `encoding/pem`, `math/big`, `net/http`, `net/http/httptest`, `os`, `path/filepath`, `testing`, `time`, плюс пакеты `config` и `transport` агента.
 
-- [ ] **Шаг 2: Запустить тест и убедиться, что он падает**
+- [x] **Шаг 2: Запустить тест и убедиться, что он падает**
 
 ```bash
 go test ./cmd/barysguard-agent/ -v
@@ -3472,7 +3472,7 @@ go test ./cmd/barysguard-agent/ -v
 
 Expected: FAIL — `undefined: runEnroll`.
 
-- [ ] **Шаг 3: Создать `agent/cmd/barysguard-agent/enroll.go`**
+- [x] **Шаг 3: Создать `agent/cmd/barysguard-agent/enroll.go`**
 
 ```go
 package main
@@ -3594,7 +3594,7 @@ func runEnroll(options enrollOptions) error {
 }
 ```
 
-- [ ] **Шаг 4: Создать `agent/cmd/barysguard-agent/main.go`**
+- [x] **Шаг 4: Создать `agent/cmd/barysguard-agent/main.go`**
 
 ```go
 // Command barysguard-agent — транспортное ядро агента BarysGuard.
@@ -3781,7 +3781,7 @@ func timeNow() time.Time { return time.Now() }
 
 и добавить `"time"` в импорты.
 
-- [ ] **Шаг 5: Запустить тесты и проверить обе сборки**
+- [x] **Шаг 5: Запустить тесты и проверить обе сборки**
 
 ```bash
 go vet ./... && go test ./... -v
@@ -3791,7 +3791,7 @@ GOOS=windows go build -o /dev/null ./cmd/barysguard-agent
 
 Expected: PASS по всем пакетам; обе сборки без ошибок.
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/cmd
@@ -3812,7 +3812,7 @@ git commit -m "feat: agent cli with enroll, run and status"
 - Consumes: бинарь `barysguard-agent`, запущенный сервер.
 - Produces: тест под build tag `e2e`.
 
-- [ ] **Шаг 1: Убедиться, что Docker поднят**
+- [x] **Шаг 1: Убедиться, что Docker поднят**
 
 ```bash
 docker version
@@ -3820,7 +3820,7 @@ docker version
 
 Если демон не запущен, запустить Docker Desktop и повторить. Без него сервер не поднимется, и задача блокируется.
 
-- [ ] **Шаг 2: Поднять сервер и создать токен**
+- [x] **Шаг 2: Поднять сервер и создать токен**
 
 ```bash
 docker compose -f deploy/docker-compose.dev.yml up -d
@@ -3843,7 +3843,7 @@ nginx после проверки клиентского сертификата.
 регистрация, но не heartbeat: для него нужен обратный прокси из
 `deploy/nginx/barysguard.conf`.
 
-- [ ] **Шаг 3: Написать сквозной тест**
+- [x] **Шаг 3: Написать сквозной тест**
 
 Создать `agent/e2e/e2e_test.go`:
 
@@ -3923,7 +3923,7 @@ func TestAgentEnrollsAndReportsStatus(t *testing.T) {
 }
 ```
 
-- [ ] **Шаг 4: Прогнать сквозной тест**
+- [x] **Шаг 4: Прогнать сквозной тест**
 
 Создать токен через операторский API, затем:
 
@@ -3939,7 +3939,7 @@ Expected: PASS. Проверить в операторском API, что аг�
 `GET /api/v1/agents` обязан вернуть его с непустым `last_heartbeat_at`
 после запуска `barysguard-agent run`.
 
-- [ ] **Шаг 5: Дописать раздел в `docs/QUICKSTART.md`**
+- [x] **Шаг 5: Дописать раздел в `docs/QUICKSTART.md`**
 
 Добавить в конец файла:
 
@@ -3974,7 +3974,7 @@ CA берётся из дистрибутива. Если его нет под �
 ```
 ````
 
-- [ ] **Шаг 6: Зафиксировать**
+- [x] **Шаг 6: Зафиксировать**
 
 ```bash
 cd .. && git add agent/e2e docs/QUICKSTART.md
