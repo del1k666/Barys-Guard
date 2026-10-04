@@ -78,7 +78,7 @@ web/
 
 ---
 
-### Задача 1: Фундамент — тема, строки, тестовая инфраструктура, ошибки
+### Task 1: Фундамент — тема, строки, тестовая инфраструктура, ошибки
 
 **Файлы:**
 - Создать: `web/src/styles/global.css`, `web/src/styles/page.module.css`, `web/src/i18n/ru.ts`, `web/src/lib/errors.ts`, `web/src/lib/errors.test.ts`, `web/src/test/utils.tsx`
@@ -776,7 +776,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 2: UI-кит, часть 1 — кнопка, поля, бейджи
+### Task 2: UI-кит, часть 1 — кнопка, поля, бейджи
 
 **Файлы:**
 - Создать: `web/src/components/Button.tsx`, `Button.module.css`, `Input.tsx`, `Select.tsx`, `Field.module.css`, `Badge.tsx`, `StatusBadge.tsx`, `Badge.module.css`
@@ -1194,7 +1194,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 3: UI-кит, часть 2 — таблица, пагинация, состояния
+### Task 3: UI-кит, часть 2 — таблица, пагинация, состояния
 
 **Файлы:**
 - Создать: `web/src/components/Table.tsx`, `Table.module.css`, `Pagination.tsx`, `Pagination.module.css`, `States.tsx`, `States.module.css`
@@ -1490,7 +1490,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 4: UI-кит, часть 3 — модальное окно и тосты
+### Task 4: UI-кит, часть 3 — модальное окно и тосты
 
 **Файлы:**
 - Создать: `web/src/components/Modal.tsx`, `Modal.module.css`, `Toast.tsx`, `Toast.module.css`
@@ -1910,7 +1910,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 5: Оболочка — боковая панель и навигация
+### Task 5: Оболочка — боковая панель и навигация
 
 **Файлы:**
 - Создать: `web/src/app/Shell.tsx`, `web/src/app/Shell.module.css`
@@ -2214,7 +2214,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 6: Вход и смена пароля
+### Task 6: Вход и смена пароля
 
 **Файлы:**
 - Создать: `web/src/features/auth/LoginPage.tsx`, `ChangePasswordPage.tsx`, `auth.module.css`
@@ -2648,7 +2648,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 7: Обзор
+### Task 7: Обзор
 
 **Файлы:**
 - Создать: `web/src/features/overview/useOverview.ts`, `web/src/features/overview/OverviewPage.tsx`
@@ -2856,7 +2856,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 8: Список агентов
+### Task 8: Список агентов
 
 **Файлы:**
 - Создать: `web/src/lib/agentFilters.ts`, `web/src/lib/agentFilters.test.ts`, `web/src/features/agents/queries.ts`, `web/src/features/agents/AgentListPage.tsx`
@@ -3317,7 +3317,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 9: Карточка агента — сведения, история, команда, отзыв
+### Task 9: Карточка агента — сведения, история, команда, отзыв
 
 **Файлы:**
 - Создать: `web/src/features/agents/Fact.tsx`, `CommandHistory.tsx`, `SendCommandDialog.tsx`, `RevokeDialog.tsx`, `AgentDetailPage.tsx`
@@ -3936,7 +3936,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Задача 10: Сборка приложения, проверка и документы
+### Task 10: Сборка приложения, проверка и документы
 
 **Файлы:**
 - Создать: `web/src/App.tsx`, `web/src/main.tsx`
