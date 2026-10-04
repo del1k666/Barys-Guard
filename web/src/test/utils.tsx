@@ -60,10 +60,13 @@ export function mockApi(routes: Record<string, Handler>): { calls: Call[] } {
         body: init?.body ? JSON.parse(String(init.body)) : undefined,
       };
 
+      // Записываем до поиска обработчика: необъявленный запрос тоже виден
+      // тесту, иначе проверка «запрос не уходил» не может провалиться.
+      calls.push(call);
+
       const handler = routes[key];
       if (!handler) return json(404, { detail: `unmocked ${key}` });
 
-      calls.push(call);
       return typeof handler === "function" ? handler(call) : handler;
     }),
   );
