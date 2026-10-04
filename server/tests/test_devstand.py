@@ -1,6 +1,7 @@
 import asyncio
 import dataclasses
 import ipaddress
+import os
 import uuid
 
 import pytest
@@ -167,8 +168,65 @@ async def test_a_certificate_missing_a_name_is_reissued(session, ca, options):
     assert "host.docker.internal" in names.get_values_for_type(x509.DNSName)
 
 
+async def _token_row(session, raw):
+    return (
+        await session.execute(
+            select(EnrollmentToken).where(EnrollmentToken.token_sha256 == hash_token(raw))
+        )
+    ).scalar_one_or_none()
+
+
+async def test_a_token_file_without_a_database_row_is_reissued(session, ca, options):
+    spec = options.groups[0]
+    options.enroll_dir.mkdir(parents=True)
+    (options.enroll_dir / spec.token_file).write_text("BG-ENROLL-orphan", encoding="ascii")
+
+    report = await bootstrap_stand(session, ca, options)
+
+    raw = (options.enroll_dir / spec.token_file).read_text(encoding="ascii")
+    assert raw != "BG-ENROLL-orphan"
+    assert spec.name in report.tokens_created
+    token = await _token_row(session, raw)
+    assert token is not None
+    assert token.group_id == (await _group(session, spec.name)).id
+    assert token.max_uses == spec.max_uses
+    assert list(options.enroll_dir.glob("*.tmp")) == []
+
+
+async def test_a_token_file_matching_another_groups_row_is_reissued(session, ca, options):
+    first, second = options.groups
+    await bootstrap_stand(session, ca, options)
+    foreign = (options.enroll_dir / first.token_file).read_text(encoding="ascii")
+    (options.enroll_dir / second.token_file).write_text(foreign, encoding="ascii")
+
+    report = await bootstrap_stand(session, ca, options)
+
+    assert report.tokens_created == [second.name]
+    assert (options.enroll_dir / first.token_file).read_text(encoding="ascii") == foreign
+    raw = (options.enroll_dir / second.token_file).read_text(encoding="ascii")
+    assert raw != foreign
+    token = await _token_row(session, raw)
+    assert token is not None
+    assert token.group_id == (await _group(session, second.name)).id
+
+
+async def test_an_empty_admin_password_is_refused_before_anything_is_touched(session, ca, options):
+    with pytest.raises(ValueError, match="password"):
+        await bootstrap_stand(session, ca, dataclasses.replace(options, admin_password=""))
+
+    assert not options.tls_dir.exists()
+    assert not options.enroll_dir.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file modes")
+async def test_the_server_key_is_private(session, ca, options):
+    await bootstrap_stand(session, ca, options)
+
+    assert (options.tls_dir / "server.key").stat().st_mode & 0o777 == 0o600
+
+
 @pytest.fixture
-def stand_env(monkeypatch, tmp_path, migrated_database_url):
+async def stand_env(monkeypatch, tmp_path, migrated_database_url, session):
     from barysguard.core.config import get_settings
     from barysguard.pki.provider import get_ca
 
@@ -191,9 +249,21 @@ def stand_env(monkeypatch, tmp_path, migrated_database_url):
     )
     get_settings.cache_clear()
     get_ca.cache_clear()
-    yield {**values, "group": f"CLI-{suffix}"}
+    group_name = f"CLI-{suffix}"
+    yield {**values, "group": group_name}
     get_settings.cache_clear()
     get_ca.cache_clear()
+
+    # CLI фиксирует изменения, поэтому за собой убираем в любом случае,
+    # в том числе когда проверки теста упали.
+    await session.rollback()
+    group_ids = select(AgentGroup.id).where(AgentGroup.name == group_name)
+    await session.execute(delete(EnrollmentToken).where(EnrollmentToken.group_id.in_(group_ids)))
+    await session.execute(delete(AgentGroup).where(AgentGroup.name == group_name))
+    await session.execute(
+        delete(User).where(User.username == values["BG_BOOTSTRAP_ADMIN_USERNAME"])
+    )
+    await session.commit()
 
 
 async def test_bootstrap_dev_creates_the_stand_state(stand_env, session, capsys, tmp_path):
@@ -212,13 +282,6 @@ async def test_bootstrap_dev_creates_the_stand_state(stand_env, session, capsys,
     assert (tmp_path / "enroll" / "cli.token").read_text().startswith("BG-ENROLL-")
     assert (tmp_path / "tls" / "server.crt").exists()
     assert stand_env["BG_BOOTSTRAP_ADMIN_USERNAME"] in capsys.readouterr().out
-
-    # CLI фиксирует изменения, поэтому за собой убираем сами.
-    group = await _group(session, stand_env["group"])
-    await session.execute(delete(EnrollmentToken).where(EnrollmentToken.group_id == group.id))
-    await session.execute(delete(AgentGroup).where(AgentGroup.id == group.id))
-    await session.execute(delete(User).where(User.id == admin.id))
-    await session.commit()
 
 
 async def test_bootstrap_dev_refuses_outside_a_stand(stand_env, monkeypatch, capsys, tmp_path):

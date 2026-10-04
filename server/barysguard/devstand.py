@@ -8,6 +8,8 @@
 
 import datetime as dt
 import ipaddress
+import os
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -19,9 +21,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.db.models.agent import AgentGroup
+from barysguard.db.models.enrollment import EnrollmentToken
 from barysguard.db.models.user import User, UserRole
 from barysguard.pki.ca import CertificateAuthority
-from barysguard.services.enrollment import create_enrollment_token
+from barysguard.services.enrollment import create_enrollment_token, hash_token
 from barysguard.services.users import create_account
 
 # Сертификат, до конца которого осталось меньше, выпускается заново.
@@ -132,24 +135,55 @@ def issue_server_certificate(
         .sign(ca.private_key, hashes.SHA256())
     )
 
+    # Ключ пишется первым и сразу с правами 0600: сбой между записями не должен
+    # оставить новый сертификат при старом ключе, а сам ключ — стать читаемым.
+    # Права 0600 оставлены намеренно: ключ читает главный процесс nginx от root.
+    descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as key_file:
+        key_file.write(
+            key.private_bytes(
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
+            )
+        )
+    key_path.chmod(0o600)
     certificate_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
     certificate_path.chmod(0o644)
-    key_path.write_bytes(
-        key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.PKCS8,
-            serialization.NoEncryption(),
-        )
-    )
-    # Ключ читает nginx: его главный процесс работает от root и права не мешают.
-    key_path.chmod(0o600)
     return True
+
+
+def _read_token_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    return path.read_text(encoding="ascii", errors="replace")
+
+
+async def _token_file_is_issued(
+    session: AsyncSession, token_path: Path, group_id: uuid.UUID
+) -> bool:
+    """Файл токена считается выданным, только если в базе есть его строка для этой группы."""
+    raw = _read_token_file(token_path)
+    if raw is None:
+        return False
+    found = (
+        await session.execute(
+            select(EnrollmentToken.id).where(
+                EnrollmentToken.token_sha256 == hash_token(raw),
+                EnrollmentToken.group_id == group_id,
+            )
+        )
+    ).first()
+    return found is not None
 
 
 async def bootstrap_stand(
     session: AsyncSession, ca: CertificateAuthority, options: StandOptions
 ) -> BootstrapReport:
     """Создаёт всё, чего ещё нет. Транзакцию фиксирует вызывающий."""
+    if not options.admin_password:
+        raise ValueError("admin_password must not be empty")
+
     report = BootstrapReport()
 
     report.certificate_issued = issue_server_certificate(
@@ -184,7 +218,7 @@ async def bootstrap_stand(
             report.groups_created.append(spec.name)
 
         token_path = options.enroll_dir / spec.token_file
-        if token_path.exists():
+        if await _token_file_is_issued(session, token_path, group.id):
             continue
 
         raw, _ = await create_enrollment_token(
@@ -194,9 +228,14 @@ async def bootstrap_stand(
             ttl_hours=TOKEN_TTL_HOURS,
             max_uses=spec.max_uses,
         )
-        token_path.write_text(raw, encoding="ascii")
+        # Файл подменяется только после того, как строка попала в сессию.
+        # Если вызывающий потом откатит транзакцию, файл останется «чужим» —
+        # следующий запуск это заметит по хешу и выпустит токен заново.
+        temporary = token_path.with_name(token_path.name + ".tmp")
+        temporary.write_text(raw, encoding="ascii")
         # Токен читают агенты, работающие не от того пользователя, что bootstrap.
-        token_path.chmod(0o644)
+        temporary.chmod(0o644)
+        os.replace(temporary, token_path)
         report.tokens_created.append(spec.name)
 
     return report
