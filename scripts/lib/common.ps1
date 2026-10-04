@@ -122,7 +122,9 @@ function Invoke-Api {
     try {
         $response = Invoke-WebRequest @params
         $status = [int]$response.StatusCode
-        $text = $response.Content
+        # Content-Type: application/json идёт без charset, и 5.1 читает тело как
+        # ISO-8859-1 (кириллица превращается в мусор); декодируем байты сами.
+        $text = [System.Text.Encoding]::UTF8.GetString($response.RawContentStream.ToArray())
     }
     catch [System.Net.WebException] {
         if ($null -eq $_.Exception.Response) {
