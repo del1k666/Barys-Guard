@@ -77,7 +77,9 @@ describe("AgentListPage", () => {
 
     await userEvent.selectOptions(screen.getByLabelText("Статус"), "offline");
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/agents?status=offline");
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(/^\/agents\?status=offline$/),
+    );
   });
 
   it("поиск по Enter пишется в URL", async () => {
@@ -87,7 +89,9 @@ describe("AgentListPage", () => {
 
     await userEvent.type(screen.getByLabelText("Поиск по имени хоста"), "srv{Enter}");
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/agents?q=srv");
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(/^\/agents\?q=srv$/),
+    );
   });
 
   it("переход на следующую страницу пишется в URL", async () => {
@@ -97,7 +101,9 @@ describe("AgentListPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Вперёд" }));
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/agents?page=2");
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(/^\/agents\?page=2$/),
+    );
   });
 
   it("пустой парк объясняется иначе, чем пустой результат фильтра", async () => {
