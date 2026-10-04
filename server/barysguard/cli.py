@@ -5,6 +5,8 @@ import uuid
 from barysguard.core.config import get_settings
 from barysguard.db.models.user import UserRole
 from barysguard.db.session import create_engine_from_url, session_factory
+from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
+from barysguard.pki.provider import get_ca
 from barysguard.services.users import create_account, username_taken
 
 
@@ -48,6 +50,42 @@ async def _create_user(
     return 0
 
 
+async def _bootstrap_dev() -> int:
+    settings = get_settings()
+
+    if not settings.stand:
+        print("bootstrap-dev работает только на dev-стенде: задайте BG_STAND=1.")
+        return 1
+    if not settings.bootstrap_admin_password:
+        print("Не задан BG_BOOTSTRAP_ADMIN_PASSWORD: пароль администратора стенда неизвестен.")
+        return 1
+
+    options = StandOptions(
+        admin_username=settings.bootstrap_admin_username,
+        admin_password=settings.bootstrap_admin_password,
+        tls_dir=settings.stand_tls_dir,
+        enroll_dir=settings.stand_enroll_dir,
+        groups=DEFAULT_GROUPS,
+    )
+
+    engine = create_engine_from_url(settings.database_url)
+    try:
+        async with session_factory(engine)() as session:
+            report = await bootstrap_stand(session, get_ca(), options)
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+    admin_state = "создан" if report.admin_created else "уже был"
+    print(f"администратор: {options.admin_username} ({admin_state})")
+    print(
+        f"группы создано: {len(report.groups_created)}, "
+        f"токенов выдано: {len(report.tokens_created)}"
+    )
+    print(f"серверный сертификат: {'выпущен' if report.certificate_issued else 'действующий'}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="barysguard-admin")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -62,9 +100,13 @@ def main() -> None:
     )
     create.add_argument("--scope-group-id", default=None, help="ограничить видимость поддеревом")
 
+    sub.add_parser("bootstrap-dev", help="начальное состояние dev-стенда (нужен BG_STAND=1)")
+
     args = parser.parse_args()
     if args.command == "create-user":
         code = asyncio.run(
             _create_user(args.username, args.role, args.api_key, args.scope_group_id)
         )
         raise SystemExit(code)
+    if args.command == "bootstrap-dev":
+        raise SystemExit(asyncio.run(_bootstrap_dev()))
