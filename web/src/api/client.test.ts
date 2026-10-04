@@ -24,7 +24,7 @@ describe("клиент API", () => {
 
     await api.get("/agents");
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("/api/v1/agents");
     // Без credentials браузер не приложит cookie, и каждый запрос
     // окажется неаутентифицированным.
@@ -51,6 +51,19 @@ describe("клиент API", () => {
       ApiError,
     );
     expect(lost).not.toHaveBeenCalled();
+  });
+
+  it("401 на /auth/me не считается потерянной сессией", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respond(401, { detail: "authentication required" })));
+    const lost = vi.fn();
+    onUnauthorized(lost);
+
+    // Неавторизованный браузер — обычное состояние, а не истёкшая сессия.
+    await expect(api.get("/auth/me")).rejects.toBeInstanceOf(ApiError);
+    expect(lost).not.toHaveBeenCalled();
+
+    await expect(api.get("/agents")).rejects.toBeInstanceOf(ApiError);
+    expect(lost).toHaveBeenCalledTimes(1);
   });
 
   it("раскладывает ошибку валидации по полям", async () => {
@@ -106,6 +119,6 @@ describe("клиент API", () => {
 
     await api.get("/agents", { q: "buh", status: undefined, limit: 50, offset: 0 });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/agents?q=buh&limit=50&offset=0");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/v1/agents?q=buh&limit=50&offset=0");
   });
 });
