@@ -1,7 +1,16 @@
-# Скрипты и конфигурации исполняются в Linux-контейнерах: CRLF из Windows
-# ломает их ("no such file or directory" на строке #!/bin/sh).
-*.sh        text eol=lf
-Dockerfile* text eol=lf
-*.conf      text eol=lf
-*.yml       text eol=lf
-*.yaml      text eol=lf
+# Продукт разворачивается на Linux. В репозитории все текстовые файлы
+# хранятся с LF независимо от того, на какой ОС ведётся разработка.
+# Без этого systemd-юниты и shell-скрипты, созданные под Windows,
+# приезжают на сервер с CRLF и падают с "bad interpreter: /bin/bash^M".
+* text=auto eol=lf
+
+# Явно бинарные — не трогать
+*.png  binary
+*.pdf  binary
+*.exe  binary
+*.pyc  binary
+*.zip  binary
+
+# Не учитывать в статистике языков репозитория
+**/__pycache__/** linguist-generated=true
+legacy/**        linguist-vendored=true

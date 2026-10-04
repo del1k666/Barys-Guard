@@ -5,6 +5,12 @@ set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/entrypoint.sh"
 FAILED=0
+SANDBOXES=""
+
+cleanup() {
+  for d in $SANDBOXES; do rm -rf "$d"; done
+}
+trap cleanup EXIT
 
 fail() {
   echo "FAIL: $1" >&2
@@ -13,6 +19,7 @@ fail() {
 
 new_sandbox() {
   SANDBOX="$(mktemp -d)"
+  SANDBOXES="$SANDBOXES $SANDBOX"
   mkdir -p "$SANDBOX/bin" "$SANDBOX/enroll" "$SANDBOX/tls" "$SANDBOX/data"
   echo "BG-ENROLL-TESTTOKEN" > "$SANDBOX/enroll/accounting.token"
   : > "$SANDBOX/tls/ca.crt"
@@ -33,6 +40,12 @@ case "$1" in
     : > "$FAKE_DIR/enrolled"
     ;;
   run)
+    if [ "${FAKE_RUN_WAIT:-0}" = 1 ]; then
+      trap 'echo TERM >> "$FAKE_DIR/got-term"; exit 0' TERM
+      sleep 30 &
+      wait $!
+      wait $!
+    fi
     exit "${FAKE_RUN_EXIT:-0}"
     ;;
 esac
@@ -128,6 +141,39 @@ new_sandbox
 : > "$SANDBOX/enrolled"
 run_entrypoint BG_AGENT_GROUP=accounting FAKE_RUN_EXIT=1
 [ "$RC" -eq 1 ] || fail "сбой агента: ожидался код 1, получен $RC"
+
+# 11. Код 137 (например, OOM) пробрасывается как есть, а не превращается в 127.
+new_sandbox
+: > "$SANDBOX/enrolled"
+run_entrypoint BG_AGENT_GROUP=accounting FAKE_RUN_EXIT=137
+[ "$RC" -eq 137 ] || fail "убитый агент: ожидался код 137, получен $RC"
+
+# 12. Сигнал остановки пересылается агенту, вход завершается его кодом.
+new_sandbox
+: > "$SANDBOX/enrolled"
+env PATH="$SANDBOX/bin:$PATH" FAKE_LOG="$LOG" FAKE_DIR="$SANDBOX" FAKE_RUN_WAIT=1   BG_AGENT_GROUP=accounting BG_AGENT_DATA_DIR="$SANDBOX/data"   BG_MACHINE_ID_FILE="$SANDBOX/machine-id"   sh "$SCRIPT" > "$SANDBOX/out.txt" 2>&1 &
+EP=$!
+i=0
+while [ "$i" -lt 100 ] && [ "$(count_calls run)" -eq 0 ]; do
+  sleep 0.1
+  i=$((i + 1))
+done
+sleep 0.3
+kill -TERM "$EP" 2>/dev/null || true
+i=0
+while [ "$i" -lt 100 ] && kill -0 "$EP" 2>/dev/null; do
+  sleep 0.1
+  i=$((i + 1))
+done
+if kill -0 "$EP" 2>/dev/null; then
+  kill -KILL "$EP" 2>/dev/null || true
+  pkill -f "sleep 30" 2>/dev/null || true
+  fail "сигнал: вход не завершился за 10 с"
+fi
+RC=0
+wait "$EP" || RC=$?
+[ "$RC" -eq 0 ] || fail "сигнал: ожидался код 0, получен $RC"
+[ -f "$SANDBOX/got-term" ] || fail "сигнал: агент не получил TERM"
 
 if [ "$FAILED" -eq 0 ]; then
   echo "entrypoint_test: все проверки прошли"
