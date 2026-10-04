@@ -18,9 +18,7 @@ COPY alembic ./alembic
 # одноимённую библиотеку, если запускать python из /app с этим каталогом в
 # sys.path. Консольные скрипты (alembic, uvicorn) на это не реагируют: их
 # sys.path[0] — каталог скрипта.
-# greenlet нужен sqlalchemy.ext.asyncio, но не объявлен в pyproject (локально
-# приходит транзитивно через dev-зависимости), поэтому ставим явно.
-RUN pip install . greenlet
+RUN pip install .
 
 RUN useradd --system --uid 10001 --home-dir /app barysguard \
     && mkdir -p /var/lib/barysguard/pki /var/lib/barysguard/artifacts /tls /enroll \
