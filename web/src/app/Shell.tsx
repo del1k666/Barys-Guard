@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { Button } from "../components/Button";
+import { useToast } from "../components/Toast";
 import { ru } from "../i18n/ru";
+import { describeError } from "../lib/errors";
 import styles from "./Shell.module.css";
 import { useSession } from "./session";
 
@@ -14,6 +16,7 @@ export function Shell() {
   const { user, loading, logout } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
 
   // После перехода выдвижное меню на узком экране закрывается.
@@ -26,7 +29,13 @@ export function Shell() {
   const locked = user?.must_change_password === true;
 
   async function leave() {
-    await logout();
+    try {
+      await logout();
+    } catch (error) {
+      // Сессия на сервере могла остаться жива: молча уводить на вход нельзя.
+      toast.notify(describeError(error), "danger");
+      return;
+    }
     navigate("/login", { replace: true });
   }
 

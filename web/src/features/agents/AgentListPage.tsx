@@ -46,6 +46,11 @@ export function AgentListPage() {
     { value: "", label: ru.agents.anyGroup },
     ...(groups.data ?? []).map((group) => ({ value: group.id, label: group.name })),
   ];
+  // Группа из адреса может быть недоступна или удалена: без своего пункта
+  // select показал бы «Любая группа», хотя список отфильтрован.
+  if (filters.groupId && !groupOptions.some((option) => option.value === filters.groupId)) {
+    groupOptions.push({ value: filters.groupId, label: filters.groupId });
+  }
 
   function body() {
     if (agents.isPending) return <Spinner label={ru.common.loading} />;

@@ -149,4 +149,14 @@ describe("AgentListPage", () => {
     expect(await screen.findByText("<b>evil</b>")).toBeInTheDocument();
     expect(document.querySelector("b")).toBeNull();
   });
+
+  it("группа из URL, которой нет среди загруженных, остаётся выбранной в фильтре", async () => {
+    setup(agentsPage([AGENT]));
+    renderPage(<AgentListPage />, route("?group_id=ghost"));
+
+    await screen.findByRole("link", { name: "ws-01" });
+    const select = screen.getByLabelText("Группа") as HTMLSelectElement;
+    expect(select).toHaveValue("ghost");
+    expect(select.selectedOptions[0]).toHaveTextContent("ghost");
+  });
 });

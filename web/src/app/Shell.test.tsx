@@ -52,4 +52,21 @@ describe("Shell", () => {
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/login"));
     expect(calls.some((call) => call.path === "POST /auth/logout")).toBe(true);
   });
+
+  it("сбой выхода показывает ошибку и оставляет оператора на месте", async () => {
+    const { calls } = mockApi({
+      "GET /auth/me": json(200, OPERATOR),
+      "POST /auth/logout": json(500, { detail: "logout failed" }),
+    });
+
+    renderPage(shellPage());
+    await screen.findByText("содержимое");
+
+    await userEvent.click(screen.getByRole("button", { name: "Выйти" }));
+
+    expect(await screen.findByText("logout failed")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/$/);
+    expect(screen.getByText("содержимое")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "POST /auth/logout")).toHaveLength(1);
+  });
 });
