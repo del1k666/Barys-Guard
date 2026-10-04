@@ -23,6 +23,7 @@ export type EnrollmentTokenResponse = Schemas["EnrollmentTokenResponse"];
 
 export type CommandResponse = Schemas["CommandResponse"];
 export type FleetCommand = Schemas["FleetCommand"];
+export type CommandType = Schemas["CommandType"];
 export type CommandPage = Schemas["CommandPage"];
 
 export type ConfigResponse = Schemas["ConfigResponse"];

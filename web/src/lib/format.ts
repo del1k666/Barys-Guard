@@ -77,3 +77,13 @@ export function formatSkew(milliseconds: number): string {
 export function formatNumber(value: number): string {
   return new Intl.NumberFormat("ru-RU").format(value);
 }
+
+/** Результат команды в одну строку таблицы. */
+export function shortJson(value: unknown, max = 80): string {
+  if (value === null || value === undefined) return "—";
+
+  const text = JSON.stringify(value);
+  if (text === undefined) return "—";
+
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
