@@ -29,3 +29,7 @@ agent/bin/
 
 # Локальный стенд: ключи CA и серверные сертификаты
 server/.local/
+
+# Web
+web/node_modules/
+web/dist/

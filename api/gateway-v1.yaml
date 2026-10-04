@@ -49,8 +49,7 @@ paths:
       tags:
       - gateway
       summary: Get Ca Certificate
-      description: Сертификат удостоверяющего центра. Без аутентификации — он публичен
-        по определению.
+      description: Сертификат удостоверяющего центра. Без аутентификации — он публичен по определению.
       operationId: get_ca_certificate_gateway_v1_ca_get
       responses:
         '200':
@@ -189,8 +188,115 @@ paths:
                 type: object
                 additionalProperties:
                   type: string
-                title: Response Submit Command Result Gateway V1 Commands  Command
-                  Id  Result Post
+                title: Response Submit Command Result Gateway V1 Commands  Command Id  Result Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/login:
+    post:
+      tags:
+      - auth
+      summary: Login
+      operationId: login_api_v1_auth_login_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionUser'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/logout:
+    post:
+      tags:
+      - auth
+      summary: Logout
+      operationId: logout_api_v1_auth_logout_post
+      responses:
+        '204':
+          description: Successful Response
+  /api/v1/auth/me:
+    get:
+      tags:
+      - auth
+      summary: Me
+      operationId: me_api_v1_auth_me_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionUser'
+  /api/v1/auth/password:
+    post:
+      tags:
+      - auth
+      summary: Change Password
+      operationId: change_password_api_v1_auth_password_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/auth/sessions:
+    get:
+      tags:
+      - auth
+      summary: List Sessions
+      description: 'Действующие входы оператора: где именно открыта консоль от его имени.'
+      operationId: list_sessions_api_v1_auth_sessions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/SessionSummary'
+                type: array
+                title: Response List Sessions Api V1 Auth Sessions Get
+  /api/v1/auth/sessions/{session_id}:
+    delete:
+      tags:
+      - auth
+      summary: Revoke Own Session
+      operationId: revoke_own_session_api_v1_auth_sessions__session_id__delete
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Session Id
+      responses:
+        '204':
+          description: Successful Response
         '422':
           description: Validation Error
           content:
@@ -198,6 +304,21 @@ paths:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/enrollment-tokens:
+    get:
+      tags:
+      - api
+      summary: List Tokens
+      operationId: list_tokens_api_v1_enrollment_tokens_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/EnrollmentTokenSummary'
+                type: array
+                title: Response List Tokens Api V1 Enrollment Tokens Get
     post:
       tags:
       - api
@@ -222,22 +343,215 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/enrollment-tokens/{token_id}/revoke:
+    post:
+      tags:
+      - api
+      summary: Revoke Token
+      operationId: revoke_token_api_v1_enrollment_tokens__token_id__revoke_post
+      parameters:
+      - name: token_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Token Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/agents:
     get:
       tags:
       - api
       summary: List Agents
       operationId: list_agents_api_v1_agents_get
+      parameters:
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Q
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: group_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                items:
-                  $ref: '#/components/schemas/AgentSummary'
+                $ref: '#/components/schemas/AgentPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/{agent_id}:
+    get:
+      tags:
+      - api
+      summary: Read Agent
+      operationId: read_agent_api_v1_agents__agent_id__get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - api
+      summary: Update Agent
+      operationId: update_agent_api_v1_agents__agent_id__patch
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/{agent_id}/certificates:
+    get:
+      tags:
+      - api
+      summary: List Agent Certificates
+      operationId: list_agent_certificates_api_v1_agents__agent_id__certificates_get
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
                 type: array
-                title: Response List Agents Api V1 Agents Get
+                items:
+                  $ref: '#/components/schemas/CertificateSummary'
+                title: Response List Agent Certificates Api V1 Agents  Agent Id  Certificates Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/agents/{agent_id}/revoke:
+    post:
+      tags:
+      - api
+      summary: Revoke Agent
+      description: 'Отзывает все действующие сертификаты агента и снимает его с обслуживания.
+
+
+        Отзыв доступен только администратору: это действие мгновенно выводит
+
+        хост из-под наблюдения, и оно же — способ скрыть следы.'
+      operationId: revoke_agent_api_v1_agents__agent_id__revoke_post
+      parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Agent Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeAgentRequest'
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/config:
     get:
       tags:
@@ -445,6 +759,422 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/groups:
+    get:
+      tags:
+      - api
+      summary: List Groups
+      operationId: list_groups_api_v1_groups_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/GroupSummary'
+                type: array
+                title: Response List Groups Api V1 Groups Get
+    post:
+      tags:
+      - api
+      summary: Create Group
+      operationId: create_group_api_v1_groups_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/groups/{group_id}:
+    patch:
+      tags:
+      - api
+      summary: Update Group
+      operationId: update_group_api_v1_groups__group_id__patch
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - api
+      summary: Delete Group
+      operationId: delete_group_api_v1_groups__group_id__delete
+      parameters:
+      - name: group_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Group Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users:
+    get:
+      tags:
+      - api
+      summary: List Users
+      operationId: list_users_api_v1_users_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/UserSummary'
+                type: array
+                title: Response List Users Api V1 Users Get
+    post:
+      tags:
+      - api
+      summary: Create Console User
+      operationId: create_console_user_api_v1_users_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuedPasswordResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users/{user_id}:
+    patch:
+      tags:
+      - api
+      summary: Update Console User
+      operationId: update_console_user_api_v1_users__user_id__patch
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users/{user_id}/reset-password:
+    post:
+      tags:
+      - api
+      summary: Reset Password
+      operationId: reset_password_api_v1_users__user_id__reset_password_post
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IssuedPasswordResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/users/{user_id}/api-key:
+    post:
+      tags:
+      - api
+      summary: Issue Api Key
+      description: Выдаёт ключ для автоматизации. Прежний ключ учётной записи перестаёт работать.
+      operationId: issue_api_key_api_v1_users__user_id__api_key_post
+      parameters:
+      - name: user_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: User Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/overview:
+    get:
+      tags:
+      - api
+      summary: Read Overview
+      description: 'Одним запросом всё, что показывает дашборд.
+
+
+        Именно одним: шесть отдельных запросов из браузера дали бы шесть
+
+        проверок сессии и шесть обходов дерева групп ради одной страницы.'
+      operationId: read_overview_api_v1_overview_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+  /api/v1/commands:
+    get:
+      tags:
+      - api
+      summary: List Fleet Commands
+      operationId: list_fleet_commands_api_v1_commands_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/audit:
+    get:
+      tags:
+      - api
+      summary: Read Audit
+      description: 'Журнал действий операторов, от новых к старым.
+
+
+        Администратор видит весь журнал, оператор — только свои записи:
+
+        читать, кто именно из коллег открывал чей перехват, — это надзорное
+
+        право, а не рядовое.'
+      operationId: read_audit_api_v1_audit_get
+      parameters:
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      - name: user_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: User Id
+      - name: since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Since
+      - name: until
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Until
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/audit/verify:
+    get:
+      tags:
+      - api
+      summary: Verify Audit
+      operationId: verify_audit_api_v1_audit_verify_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditIntegrity'
+  /api/v1/audit/{entry_id}:
+    get:
+      tags:
+      - api
+      summary: Read Audit Entry
+      operationId: read_audit_entry_api_v1_audit__entry_id__get
+      parameters:
+      - name: entry_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Entry Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditEntry'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AgentConfigDocument:
@@ -495,6 +1225,116 @@ components:
       - version
       - document
       title: AgentConfigResponse
+    AgentDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        hostname:
+          type: string
+          title: Hostname
+        os:
+          type: string
+          title: Os
+        os_version:
+          type: string
+          title: Os Version
+        arch:
+          type: string
+          title: Arch
+        agent_version:
+          type: string
+          title: Agent Version
+        status:
+          type: string
+          title: Status
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+        group_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Group Name
+        last_heartbeat_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Heartbeat At
+        last_ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Ip
+        clock_skew_ms:
+          type: integer
+          title: Clock Skew Ms
+        config_version:
+          type: integer
+          title: Config Version
+        enrolled_at:
+          type: string
+          format: date-time
+          title: Enrolled At
+        machine_id:
+          type: string
+          title: Machine Id
+        tags:
+          additionalProperties: true
+          type: object
+          title: Tags
+        certificate:
+          anyOf:
+          - $ref: '#/components/schemas/CertificateSummary'
+          - type: 'null'
+      type: object
+      required:
+      - id
+      - hostname
+      - os
+      - os_version
+      - arch
+      - agent_version
+      - status
+      - group_id
+      - group_name
+      - last_heartbeat_at
+      - last_ip
+      - clock_skew_ms
+      - config_version
+      - enrolled_at
+      - machine_id
+      - tags
+      - certificate
+      title: AgentDetail
+    AgentPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AgentSummary'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: AgentPage
     AgentSummary:
       properties:
         id:
@@ -507,27 +1347,163 @@ components:
         os:
           type: string
           title: Os
+        os_version:
+          type: string
+          title: Os Version
+        arch:
+          type: string
+          title: Arch
         agent_version:
           type: string
           title: Agent Version
         status:
           type: string
           title: Status
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+        group_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Group Name
         last_heartbeat_at:
           anyOf:
           - type: string
             format: date-time
           - type: 'null'
           title: Last Heartbeat At
+        last_ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Last Ip
+        clock_skew_ms:
+          type: integer
+          title: Clock Skew Ms
+        config_version:
+          type: integer
+          title: Config Version
+        enrolled_at:
+          type: string
+          format: date-time
+          title: Enrolled At
       type: object
       required:
       - id
       - hostname
       - os
+      - os_version
+      - arch
       - agent_version
       - status
+      - group_id
+      - group_name
       - last_heartbeat_at
+      - last_ip
+      - clock_skew_ms
+      - config_version
+      - enrolled_at
       title: AgentSummary
+    ApiKeyResponse:
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        api_key:
+          type: string
+          title: Api Key
+      type: object
+      required:
+      - user
+      - api_key
+      title: ApiKeyResponse
+    AuditEntry:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        seq:
+          type: integer
+          title: Seq
+        at:
+          type: string
+          format: date-time
+          title: At
+        user_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: User Id
+        username:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Username
+        action:
+          type: string
+          title: Action
+        target_type:
+          type: string
+          title: Target Type
+        target_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Target Id
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+      type: object
+      required:
+      - id
+      - seq
+      - at
+      - user_id
+      - username
+      - action
+      - target_type
+      - target_id
+      - payload
+      title: AuditEntry
+    AuditIntegrity:
+      properties:
+        intact:
+          type: boolean
+          title: Intact
+        broken_seq:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Broken Seq
+      type: object
+      required:
+      - intact
+      - broken_seq
+      title: AuditIntegrity
+    AuditPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: AuditPage
     BufferConfig:
       properties:
         max_bytes:
@@ -544,6 +1520,105 @@ components:
       additionalProperties: false
       type: object
       title: BufferConfig
+    CertificateSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        serial:
+          type: string
+          title: Serial
+        fingerprint_sha256:
+          type: string
+          title: Fingerprint Sha256
+        not_before:
+          type: string
+          format: date-time
+          title: Not Before
+        not_after:
+          type: string
+          format: date-time
+          title: Not After
+        issued_at:
+          type: string
+          format: date-time
+          title: Issued At
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        revocation_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Revocation Reason
+      type: object
+      required:
+      - id
+      - serial
+      - fingerprint_sha256
+      - not_before
+      - not_after
+      - issued_at
+      - revoked_at
+      - revocation_reason
+      title: CertificateSummary
+    ChangePasswordRequest:
+      properties:
+        current_password:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Current Password
+        new_password:
+          type: string
+          maxLength: 1024
+          minLength: 12
+          title: New Password
+      type: object
+      required:
+      - current_password
+      - new_password
+      title: ChangePasswordRequest
+    CommandCounts:
+      properties:
+        queued:
+          type: integer
+          title: Queued
+        failed_24h:
+          type: integer
+          title: Failed 24H
+      type: object
+      required:
+      - queued
+      - failed_24h
+      title: CommandCounts
+    CommandPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/FleetCommand'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: CommandPage
     CommandResponse:
       properties:
         id:
@@ -702,6 +1777,47 @@ components:
           title: Group Id
       type: object
       title: CreateEnrollmentTokenRequest
+    CreateGroupRequest:
+      properties:
+        name:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Name
+        parent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parent Id
+      type: object
+      required:
+      - name
+      title: CreateGroupRequest
+    CreateUserRequest:
+      properties:
+        username:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Username
+        role:
+          type: string
+          enum:
+          - admin
+          - operator
+          title: Role
+          default: operator
+        scope_group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Scope Group Id
+      type: object
+      required:
+      - username
+      title: CreateUserRequest
     EffectiveConfigResponse:
       properties:
         agent_id:
@@ -787,6 +1903,193 @@ components:
       - expires_at
       - max_uses
       title: EnrollmentTokenResponse
+    EnrollmentTokenSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+        group_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Group Name
+        created_by:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Created By
+        created_by_username:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Created By Username
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        max_uses:
+          type: integer
+          title: Max Uses
+        used_count:
+          type: integer
+          title: Used Count
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        state:
+          type: string
+          title: State
+      type: object
+      required:
+      - id
+      - group_id
+      - group_name
+      - created_by
+      - created_by_username
+      - created_at
+      - expires_at
+      - max_uses
+      - used_count
+      - revoked_at
+      - state
+      title: EnrollmentTokenSummary
+    FleetCommand:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        type:
+          type: string
+          title: Type
+        status:
+          type: string
+          title: Status
+        payload:
+          additionalProperties: true
+          type: object
+          title: Payload
+        result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Result
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        hostname:
+          type: string
+          title: Hostname
+      type: object
+      required:
+      - id
+      - type
+      - status
+      - payload
+      - result
+      - created_at
+      - sent_at
+      - completed_at
+      - expires_at
+      - agent_id
+      - hostname
+      title: FleetCommand
+    FleetCounts:
+      properties:
+        total:
+          type: integer
+          title: Total
+        active:
+          type: integer
+          title: Active
+        offline:
+          type: integer
+          title: Offline
+        pending:
+          type: integer
+          title: Pending
+        quarantined:
+          type: integer
+          title: Quarantined
+        revoked:
+          type: integer
+          title: Revoked
+      type: object
+      required:
+      - total
+      - active
+      - offline
+      - pending
+      - quarantined
+      - revoked
+      title: FleetCounts
+    GroupSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        name:
+          type: string
+          title: Name
+        parent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parent Id
+        agent_count:
+          type: integer
+          title: Agent Count
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - name
+      - parent_id
+      - agent_count
+      - created_at
+      title: GroupSummary
     HTTPValidationError:
       properties:
         detail:
@@ -885,6 +2188,22 @@ components:
       - arch
       - agent_version
       title: HostFacts
+    IssuedPasswordResponse:
+      properties:
+        user:
+          $ref: '#/components/schemas/UserSummary'
+        password:
+          type: string
+          title: Password
+        must_change_password:
+          type: boolean
+          title: Must Change Password
+      type: object
+      required:
+      - user
+      - password
+      - must_change_password
+      title: IssuedPasswordResponse
     LoggingConfig:
       properties:
         level:
@@ -899,6 +2218,54 @@ components:
       additionalProperties: false
       type: object
       title: LoggingConfig
+    LoginRequest:
+      properties:
+        username:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Username
+        password:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Password
+      type: object
+      required:
+      - username
+      - password
+      title: LoginRequest
+    Overview:
+      properties:
+        agents:
+          $ref: '#/components/schemas/FleetCounts'
+        certificates_expiring:
+          type: integer
+          title: Certificates Expiring
+        tokens_active:
+          type: integer
+          title: Tokens Active
+        commands:
+          $ref: '#/components/schemas/CommandCounts'
+        agent_versions:
+          items:
+            $ref: '#/components/schemas/VersionCount'
+          type: array
+          title: Agent Versions
+        operating_systems:
+          items:
+            $ref: '#/components/schemas/VersionCount'
+          type: array
+          title: Operating Systems
+      type: object
+      required:
+      - agents
+      - certificates_expiring
+      - tokens_active
+      - commands
+      - agent_versions
+      - operating_systems
+      title: Overview
     QueuedCommand:
       properties:
         id:
@@ -951,6 +2318,87 @@ components:
       - ca_pem
       - not_after
       title: RenewResponse
+    RevokeAgentRequest:
+      properties:
+        reason:
+          type: string
+          maxLength: 255
+          minLength: 1
+          title: Reason
+      type: object
+      required:
+      - reason
+      title: RevokeAgentRequest
+    SessionSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        last_seen_at:
+          type: string
+          format: date-time
+          title: Last Seen At
+        expires_at:
+          type: string
+          format: date-time
+          title: Expires At
+        ip:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ip
+        user_agent:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: User Agent
+        current:
+          type: boolean
+          title: Current
+      type: object
+      required:
+      - id
+      - created_at
+      - last_seen_at
+      - expires_at
+      - ip
+      - user_agent
+      - current
+      title: SessionSummary
+    SessionUser:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        username:
+          type: string
+          title: Username
+        role:
+          type: string
+          title: Role
+        scope_group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Scope Group Id
+        must_change_password:
+          type: boolean
+          title: Must Change Password
+      type: object
+      required:
+      - id
+      - username
+      - role
+      - scope_group_id
+      - must_change_password
+      title: SessionUser
     TransportConfig:
       properties:
         heartbeat_interval_seconds:
@@ -986,6 +2434,122 @@ components:
       additionalProperties: false
       type: object
       title: TransportConfig
+    UpdateAgentRequest:
+      properties:
+        group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Group Id
+        tags:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Tags
+      type: object
+      title: UpdateAgentRequest
+    UpdateGroupRequest:
+      properties:
+        name:
+          anyOf:
+          - type: string
+            maxLength: 255
+            minLength: 1
+          - type: 'null'
+          title: Name
+        parent_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Parent Id
+      type: object
+      title: UpdateGroupRequest
+    UpdateUserRequest:
+      properties:
+        role:
+          anyOf:
+          - type: string
+            enum:
+            - admin
+            - operator
+          - type: 'null'
+          title: Role
+        scope_group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Scope Group Id
+        is_active:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Active
+      type: object
+      title: UpdateUserRequest
+    UserSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        username:
+          type: string
+          title: Username
+        role:
+          type: string
+          title: Role
+        scope_group_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Scope Group Id
+        is_active:
+          type: boolean
+          title: Is Active
+        must_change_password:
+          type: boolean
+          title: Must Change Password
+        has_password:
+          type: boolean
+          title: Has Password
+        has_api_key:
+          type: boolean
+          title: Has Api Key
+        last_login_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Last Login At
+        locked_until:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Locked Until
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - id
+      - username
+      - role
+      - scope_group_id
+      - is_active
+      - must_change_password
+      - has_password
+      - has_api_key
+      - last_login_at
+      - locked_until
+      - created_at
+      title: UserSummary
     ValidationError:
       properties:
         loc:
@@ -1012,3 +2576,16 @@ components:
       - msg
       - type
       title: ValidationError
+    VersionCount:
+      properties:
+        value:
+          type: string
+          title: Value
+        count:
+          type: integer
+          title: Count
+      type: object
+      required:
+      - value
+      - count
+      title: VersionCount

@@ -41,11 +41,22 @@ def create_app() -> FastAPI:
 
         return {"status": "ok", "database": "ok"}
 
+    from barysguard.api.auth import router as auth_router
+    from barysguard.api.groups import router as groups_router
+    from barysguard.api.overview import router as overview_router
     from barysguard.api.router import router as api_router
+    from barysguard.api.users import router as users_router
     from barysguard.gateway.router import router as gateway_router
 
     app.include_router(gateway_router)
+    app.include_router(auth_router)
+
+    # Основной роутер идёт раньше: в нём живёт /api/v1/groups/{id}/config,
+    # и он должен разбираться прежде, чем более общий /api/v1/groups/{id}.
     app.include_router(api_router)
+    app.include_router(groups_router)
+    app.include_router(users_router)
+    app.include_router(overview_router)
 
     return app
 

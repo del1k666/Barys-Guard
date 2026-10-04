@@ -115,5 +115,5 @@ async def test_silent_agent_is_listed_offline(app_client, session):
 
     response = await app_client.get("/api/v1/agents", headers={"X-Api-Key": key})
 
-    entry = next(item for item in response.json() if item["id"] == str(enrolled.agent_id))
+    entry = next(item for item in response.json()["items"] if item["id"] == str(enrolled.agent_id))
     assert entry["status"] == "offline"

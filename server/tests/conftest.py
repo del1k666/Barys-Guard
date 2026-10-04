@@ -112,6 +112,10 @@ async def app_client(migrated_database_url, tmp_path, monkeypatch):
     monkeypatch.setenv("BG_CA_DIR", str(tmp_path / "pki"))
     monkeypatch.setenv("BG_CA_PASSPHRASE", "test-passphrase")
 
+    # Клиент тестов ходит по http, а cookie с флагом Secure браузерный клиент
+    # по http не вернёт. В бою флаг остаётся включённым.
+    monkeypatch.setenv("BG_COOKIE_SECURE", "false")
+
     # Обе функции кешируются через lru_cache. Без сброса тест получит
     # настройки и удостоверяющий центр от предыдущего теста, а CA из
     # удалённого tmp_path перестанет соответствовать записям в базе.
@@ -128,7 +132,8 @@ async def app_client(migrated_database_url, tmp_path, monkeypatch):
         await conn.execute(
             text(
                 "TRUNCATE commands, agent_configs, agent_certificates, enrollment_tokens, "
-                "agents, agent_groups, audit_log, users RESTART IDENTITY CASCADE"
+                "console_sessions, agents, agent_groups, audit_log, users "
+                "RESTART IDENTITY CASCADE"
             )
         )
 

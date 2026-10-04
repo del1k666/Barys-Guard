@@ -6,6 +6,8 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from barysguard.db.models.user import User, UserRole
+
 
 def build_csr() -> str:
     """Запрос на сертификат. Субъект сервером игнорируется, имя произвольно."""
@@ -94,3 +96,56 @@ async def set_global_config(session: AsyncSession, document: dict) -> None:
         row.document = document
 
     await session.flush()
+
+
+async def create_operator(
+    session: AsyncSession,
+    *,
+    username: str,
+    password: str | None = None,
+    role: UserRole | None = None,
+    scope_group_id: uuid.UUID | None = None,
+    api_key: str | None = None,
+) -> User:
+    """Оператор консоли. Пароль и ключ независимы: ставится то, что передали."""
+    from barysguard.services.auth import hash_password
+    from barysguard.services.users import hash_api_key
+
+    user = User(
+        username=username,
+        role=role or UserRole.OPERATOR,
+        scope_group_id=scope_group_id,
+        password_hash=hash_password(password) if password else None,
+        api_key_sha256=hash_api_key(api_key) if api_key else None,
+    )
+    session.add(user)
+    await session.flush()
+    return user
+
+
+CONSOLE_PASSWORD = "correct horse battery staple"
+
+
+async def login_as(
+    app_client,
+    session: AsyncSession,
+    *,
+    username: str = "officer",
+    role: UserRole | None = None,
+    scope_group_id: uuid.UUID | None = None,
+) -> User:
+    """Заводит оператора и входит им в консоль. Возвращает учётную запись."""
+    user = await create_operator(
+        session,
+        username=username,
+        password=CONSOLE_PASSWORD,
+        role=role,
+        scope_group_id=scope_group_id,
+    )
+    await session.commit()
+
+    response = await app_client.post(
+        "/api/v1/auth/login", json={"username": username, "password": CONSOLE_PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    return user

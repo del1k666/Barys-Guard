@@ -40,6 +40,26 @@ class Settings(BaseSettings):
     # Опрос команд агентом
     heartbeat_interval_seconds: int = 30
 
+    # Сессии веб-консоли
+    session_cookie_name: str = "bg_session"
+    session_ttl_minutes: int = 720
+    session_idle_minutes: int = 30
+
+    # Снимается только для локального стенда по http: без флага Secure
+    # браузер отправит cookie сессии в открытом виде.
+    cookie_secure: bool = True
+
+    # Источники, которым разрешено изменять состояние по cookie-сессии.
+    # Пусто — разрешён только собственный адрес запроса; для разработки
+    # сюда добавляется адрес Vite: "http://localhost:5173".
+    console_origins: str = ""
+
+    @property
+    def console_origin_list(self) -> list[str]:
+        return [
+            item.strip().rstrip("/") for item in self.console_origins.split(",") if item.strip()
+        ]
+
     # Хранилище артефактов (используется в плане 1C)
     artifact_path: Path = Path("/var/lib/barysguard/artifacts")
     artifact_master_key: str = ""
