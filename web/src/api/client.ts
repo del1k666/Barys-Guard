@@ -96,7 +96,9 @@ async function request<T>(
     }
 
     // Неудачный вход — не потеря сессии: уводить с экрана входа некуда.
-    if (response.status === 401 && !path.startsWith("/auth/login")) {
+    // 401 на /auth/me — обычный ответ неавторизованному браузеру; сброс
+    // кеша посреди этого запроса оставил бы сессию в вечной загрузке.
+    if (response.status === 401 && !path.startsWith("/auth/login") && path !== "/auth/me") {
       sessionLost();
     }
 
