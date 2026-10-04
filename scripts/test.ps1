@@ -31,8 +31,10 @@ function Invoke-TestStep {
     # Утилиты пишут в stderr даже при успехе; для Windows PowerShell 5.1 это
     # не должно быть ошибкой. Успех определяется кодом возврата.
     $ErrorActionPreference = 'Continue'
-    Push-Location (Join-Path $script:RepoRoot $Dir)
+    $pushed = $false
     try {
+        Push-Location (Join-Path $script:RepoRoot $Dir) -ErrorAction Stop
+        $pushed = $true
         $global:LASTEXITCODE = 0
         & $Command
         $ok = ($LASTEXITCODE -eq 0)
@@ -41,7 +43,7 @@ function Invoke-TestStep {
         Write-Host $_.Exception.Message -ForegroundColor Red
     }
     finally {
-        Pop-Location
+        if ($pushed) { Pop-Location }
         $ErrorActionPreference = $previous
     }
 
@@ -92,6 +94,7 @@ if ($Only -eq 'all' -or $Only -eq 'agent') {
     }
     else {
         Write-Host 'sh не найден (нужен Git Bash): проверка entrypoint.sh пропущена.' -ForegroundColor Yellow
+        Add-Failure 'agent' 'entrypoint.sh: sh не найден (нужен Git Bash)'
     }
 }
 
