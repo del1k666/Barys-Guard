@@ -1,0 +1,13 @@
+**/node_modules
+**/.venv
+**/.git
+.git
+**/__pycache__
+**/.mypy_cache
+**/.pytest_cache
+**/.ruff_cache
+server/.local
+web/dist
+legacy
+docs
+.superpowers
