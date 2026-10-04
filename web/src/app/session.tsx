@@ -51,7 +51,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = useMutation({
     mutationFn: (credentials: { username: string; password: string }) =>
       api.post<SessionUser>("/auth/login", credentials),
-    onSuccess: (user) => client.setQueryData(ME_KEY, user),
+    onSuccess: (user) => {
+      // Кеш прошлого оператора мог пережить истёкшую сессию (401 на /auth/me
+      // кеш не сбрасывает); новому оператору он не принадлежит.
+      client.removeQueries({ predicate: (query) => query.queryKey[0] !== ME_KEY[0] });
+      client.setQueryData(ME_KEY, user);
+    },
   });
 
   const logout = useMutation({

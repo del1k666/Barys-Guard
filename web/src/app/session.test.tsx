@@ -6,7 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequireAuth } from "./RequireAuth";
-import { SessionProvider } from "./session";
+import { SessionProvider, useSession } from "./session";
 
 function json(status: number, body: unknown): Response {
   return {
@@ -26,8 +26,11 @@ const OPERATOR = {
   must_change_password: false,
 };
 
-function wrap(children: ReactNode, initial = "/") {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrap(
+  children: ReactNode,
+  initial = "/",
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initial]}>
@@ -110,5 +113,42 @@ describe("сессия консоли", () => {
     await userEvent.click(await screen.findByRole("button", { name: "запросить" }));
 
     await waitFor(() => expect(screen.getByText("экран входа")).toBeInTheDocument());
+  });
+
+  it("вход стирает кеш предыдущего оператора", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Кеш прошлого оператора пережил истёкшую сессию: 401 на /auth/me
+    // кеш не сбрасывает, поэтому чистить его должен сам вход.
+    client.setQueryData(["agents", { page: 1 }], { items: [{ id: "secret" }] });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith("/auth/login") && init?.method === "POST") {
+          return json(200, OPERATOR);
+        }
+        return json(401, { detail: "authentication required" });
+      }),
+    );
+
+    function LoginButton() {
+      const { login } = useSession();
+      return <button onClick={() => void login("ivanov", "pw")}>войти</button>;
+    }
+
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <SessionProvider>
+            <LoginButton />
+          </SessionProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "войти" }));
+
+    await waitFor(() => expect(client.getQueryData(["auth", "me"])).toEqual(OPERATOR));
+    expect(client.getQueryData(["agents", { page: 1 }])).toBeUndefined();
   });
 });
