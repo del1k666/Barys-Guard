@@ -176,4 +176,106 @@ describe("AgentDetailPage", () => {
     release(json(204, null));
     expect(await screen.findByText("Агент отозван")).toBeInTheDocument();
   });
+  it("отмена сбрасывает введённую причину: при повторном открытии поле пустое", async () => {
+    setup(ADMIN, { "POST /agents/a1/revoke": json(204, null) });
+    renderPage(<AgentDetailPage />, where);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Отозвать агента" }));
+    await userEvent.type(
+      within(screen.getByRole("dialog")).getByLabelText("Причина отзыва"),
+      "хост утерян",
+    );
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Отмена" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Отозвать агента" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Причина отзыва")).toHaveValue("");
+    expect(within(dialog).getByRole("button", { name: "Отозвать" })).toBeDisabled();
+  });
+
+  it("пока запрос на отзыв в пути, Esc не закрывает окно, а «Отмена» заблокирована", async () => {
+    let release: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    setup(ADMIN, { "POST /agents/a1/revoke": () => pending });
+    renderPage(<AgentDetailPage />, where);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Отозвать агента" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Причина отзыва"), "хост утерян");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Отозвать" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Отмена" })).toBeDisabled());
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    release(json(204, null));
+    expect(await screen.findByText("Агент отозван")).toBeInTheDocument();
+  });
+
+  it("ошибка отзыва: тост об ошибке, окно открыто, запрос один", async () => {
+    const { calls } = setup(ADMIN, {
+      "POST /agents/a1/revoke": json(500, { detail: "boom" }),
+    });
+    renderPage(<AgentDetailPage />, where);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Отозвать агента" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Причина отзыва"), "хост утерян");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Отозвать" }));
+
+    expect(await screen.findByText("boom")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "POST /agents/a1/revoke")).toHaveLength(1);
+  });
+
+  it("после успешного отзыва карточка обновляется и действия исчезают", async () => {
+    let revoked = false;
+    setup(ADMIN, {
+      "GET /agents/a1": () => json(200, revoked ? { ...DETAIL, status: "revoked" } : DETAIL),
+      "POST /agents/a1/revoke": () => {
+        revoked = true;
+        return json(204, null);
+      },
+    });
+    renderPage(<AgentDetailPage />, where);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Отозвать агента" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Причина отзыва"), "хост утерян");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Отозвать" }));
+
+    expect(await screen.findByText("Агент отозван")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Отозвать агента" })).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("button", { name: "Отправить команду" })).not.toBeInTheDocument();
+  });
+
+  it("отмена диалога команды возвращает тип по умолчанию", async () => {
+    setup(ADMIN);
+    renderPage(<AgentDetailPage />, where);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Отправить команду" }));
+    await userEvent.selectOptions(
+      within(screen.getByRole("dialog")).getByLabelText("Тип команды"),
+      "refresh_config",
+    );
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Отмена" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Отправить команду" }));
+    expect(within(screen.getByRole("dialog")).getByLabelText("Тип команды")).toHaveValue("ping");
+  });
+
+  it("кодирует идентификатор агента в пути запроса", async () => {
+    const { calls } = setup(OPERATOR, {
+      "GET /agents/a%2Fb%3Fx": json(200, { ...DETAIL, id: "a/b?x" }),
+    });
+    renderPage(<AgentDetailPage />, { route: "/agents/a%2Fb%3Fx", path: "/agents/:id" });
+
+    expect(await screen.findByRole("heading", { name: "ws-01" })).toBeInTheDocument();
+    expect(calls.some((call) => call.path === "GET /agents/a%2Fb%3Fx")).toBe(true);
+  });
 });

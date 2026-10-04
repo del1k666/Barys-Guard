@@ -23,10 +23,20 @@ export function SendCommandDialog({ agentId, hostname, open, onClose }: Props) {
   const send = useSendCommand(agentId);
   const toast = useToast();
 
+  // Пока запрос в пути, окно не закрывается; выбор не переживает окно.
+  function close() {
+    if (send.isPending) return;
+    setType("ping");
+    send.reset();
+    onClose();
+  }
+
   async function confirm() {
     try {
       await send.mutateAsync(type);
       toast.notify(ru.agent.commandSent, "ok");
+      setType("ping");
+      send.reset();
       onClose();
     } catch (failure) {
       toast.notify(describeError(failure), "danger");
@@ -37,10 +47,10 @@ export function SendCommandDialog({ agentId, hostname, open, onClose }: Props) {
     <Modal
       open={open}
       title={ru.agent.commandTitle}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button onClick={onClose}>{ru.common.cancel}</Button>
+          <Button disabled={send.isPending} onClick={close}>{ru.common.cancel}</Button>
           <Button variant="primary" loading={send.isPending} onClick={confirm}>
             {ru.agent.commandSend}
           </Button>

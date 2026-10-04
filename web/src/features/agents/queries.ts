@@ -41,7 +41,7 @@ export function useGroups() {
 export function useAgent(id: string) {
   return useQuery({
     queryKey: ["agent", id],
-    queryFn: () => api.get<AgentDetail>(`/agents/${id}`),
+    queryFn: () => api.get<AgentDetail>(`/agents/${encodeURIComponent(id)}`),
   });
 }
 
@@ -56,7 +56,7 @@ export function useSendCommand(id: string) {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: (type: CommandType) => api.post<CommandResponse>(`/agents/${id}/commands`, { type }),
+    mutationFn: (type: CommandType) => api.post<CommandResponse>(`/agents/${encodeURIComponent(id)}/commands`, { type }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["agent-commands", id] });
       void client.invalidateQueries({ queryKey: OVERVIEW_KEY });
@@ -68,7 +68,7 @@ export function useRevokeAgent(id: string) {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: (reason: string) => api.post<null>(`/agents/${id}/revoke`, { reason }),
+    mutationFn: (reason: string) => api.post<null>(`/agents/${encodeURIComponent(id)}/revoke`, { reason }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ["agent", id] });
       void client.invalidateQueries({ queryKey: ["agents"] });

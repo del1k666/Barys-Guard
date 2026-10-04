@@ -20,10 +20,21 @@ export function RevokeDialog({ agentId, hostname, open, onClose }: Props) {
   const revoke = useRevokeAgent(agentId);
   const toast = useToast();
 
+  // Пока запрос в пути, закрыть окно нельзя: иначе оператор решит, что
+  // отменил отзыв, который всё равно состоится. Причина не переживает окно.
+  function close() {
+    if (revoke.isPending) return;
+    setReason("");
+    revoke.reset();
+    onClose();
+  }
+
   async function confirm() {
     try {
       await revoke.mutateAsync(reason.trim());
       toast.notify(ru.agent.revoked, "ok");
+      setReason("");
+      revoke.reset();
       onClose();
     } catch (failure) {
       toast.notify(describeError(failure), "danger");
@@ -34,10 +45,10 @@ export function RevokeDialog({ agentId, hostname, open, onClose }: Props) {
     <Modal
       open={open}
       title={ru.agent.revokeTitle}
-      onClose={onClose}
+      onClose={close}
       footer={
         <>
-          <Button onClick={onClose}>{ru.common.cancel}</Button>
+          <Button disabled={revoke.isPending} onClick={close}>{ru.common.cancel}</Button>
           <Button
             variant="danger"
             loading={revoke.isPending}
