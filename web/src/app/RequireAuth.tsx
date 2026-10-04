@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { Spinner } from "../components/Spinner";
+import { ru } from "../i18n/ru";
 import { useSession } from "./session";
 
 /**
@@ -16,7 +17,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   if (loading) {
-    return <Spinner label="Проверяем сессию" />;
+    return <Spinner label={ru.login.checking} />;
   }
 
   if (user === null) {
