@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/identity"
 	"github.com/barysguard/agent/internal/volumes"
@@ -34,8 +35,10 @@ type PipelineDeps struct {
 	Hasher     Hasher
 	Identity   identity.Resolver
 	Attributor Attributor
-	Emit       func(events.Envelope)
-	Now        func() time.Time
+	// Stager снимает копию файлов внешних томов для загрузки. nil — не снимает.
+	Stager artifacts.Stager
+	Emit   func(events.Envelope)
+	Now    func() time.Time
 }
 
 // Pipeline превращает поток уведомлений в события. Не потокобезопасен:
@@ -143,7 +146,15 @@ func (p *Pipeline) emit(settled Settled, now time.Time) {
 
 	in := EventInput{Action: settled.Action, DstPath: settled.Path, OldPath: settled.OldPath, Volume: vol}
 	if settled.Action != ActionDelete {
-		in.Hash = p.deps.Hasher.Hash(settled.Path, cfg.MaxHashBytes, now.Add(min(cfg.MaxWait, hashRetryBudget)))
+		// Копия нужна только для содержимого, которое уходит на внешний том:
+		// copy возникает из create/modify уже после хеширования.
+		var stager artifacts.Stager
+		if p.deps.Stager != nil && removable &&
+			(settled.Action == ActionCreate || settled.Action == ActionModify) {
+			stager = p.deps.Stager
+		}
+		in.Hash = p.deps.Hasher.HashStaged(settled.Path, cfg.MaxHashBytes,
+			now.Add(min(cfg.MaxWait, hashRetryBudget)), stager)
 		if in.Hash.Status == HashGone {
 			return // временный файл или каталог
 		}

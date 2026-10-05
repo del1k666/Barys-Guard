@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/identity"
 	"github.com/barysguard/agent/internal/volumes"
@@ -22,10 +23,12 @@ const (
 )
 
 type Deps struct {
-	Config       Config
-	Hub          *volumes.Hub
-	Identity     identity.Resolver
-	Attributor   Attributor
+	Config     Config
+	Hub        *volumes.Hub
+	Identity   identity.Resolver
+	Attributor Attributor
+	// Stager снимает копии файлов внешних томов; nil — копий нет.
+	Stager       artifacts.Stager
 	StartWatcher StartWatcher
 	// Hasher и RootExists подменяются в тестах; нулевые значения дают боевые.
 	Hasher     Hasher
@@ -83,6 +86,7 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 		Hasher:     c.deps.Hasher,
 		Identity:   c.deps.Identity,
 		Attributor: c.deps.Attributor,
+		Stager:     c.deps.Stager,
 		Emit:       emit,
 		Now:        c.deps.Now,
 	})

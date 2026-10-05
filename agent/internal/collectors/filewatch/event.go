@@ -1,6 +1,7 @@
 package filewatch
 
 import (
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/volumes"
 )
@@ -58,6 +59,10 @@ func BuildEvent(in EventInput) (events.Envelope, error) {
 		subject["size_bytes"] = in.Hash.Size
 	case HashUnavailable:
 		labels["hash"] = "unavailable"
+	}
+	if in.Hash.StageSkip == artifacts.SkipRate {
+		// Бюджет копирования исчерпан: оператор видит, что содержимое не взято.
+		labels["artifact_skipped"] = "rate"
 	}
 	if in.Volume.Type == volumes.TypeRemovable && in.Action != ActionDelete && in.Process == nil {
 		labels["process"] = "unknown"
