@@ -59,7 +59,17 @@ async def test_filters_by_channel_action_severity_and_time(app_client, session) 
     await _send(
         app_client,
         agent,
-        _event(at=now - timedelta(hours=3), channel="file", action="copy", severity_hint="high"),
+        _event(
+            at=now - timedelta(hours=3),
+            channel="file",
+            action="copy",
+            severity_hint="high",
+            subject={
+                "dst_path": "E:\a.docx",
+                "src_path": "C:\a.docx",
+                "volume": {"type": "removable"},
+            },
+        ),
         _event(at=now - timedelta(minutes=5), channel="agent", action="start"),
     )
 
