@@ -1,6 +1,7 @@
 """Импорт всех моделей. Alembic полагается на этот модуль для автогенерации."""
 
 from barysguard.db.models.agent import Agent, AgentGroup, AgentStatus
+from barysguard.db.models.artifact import Artifact, UploadSession
 from barysguard.db.models.audit import AuditLog
 from barysguard.db.models.certificate import AgentCertificate
 from barysguard.db.models.command import Command, CommandStatus, CommandType
@@ -16,6 +17,7 @@ __all__ = [
     "AgentCertificate",
     "AgentGroup",
     "AgentStatus",
+    "Artifact",
     "AuditLog",
     "Command",
     "CommandStatus",
@@ -24,6 +26,7 @@ __all__ = [
     "ConsoleSession",
     "EnrollmentToken",
     "Event",
+    "UploadSession",
     "User",
     "UserRole",
 ]

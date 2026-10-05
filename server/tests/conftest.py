@@ -131,7 +131,8 @@ async def app_client(migrated_database_url, tmp_path, monkeypatch):
     async with engine.begin() as conn:
         await conn.execute(
             text(
-                "TRUNCATE events, commands, agent_configs, agent_certificates, enrollment_tokens, "
+                "TRUNCATE events, artifacts, upload_sessions, commands, agent_configs, "
+                "agent_certificates, enrollment_tokens, "
                 "console_sessions, agents, agent_groups, audit_log, users "
                 "RESTART IDENTITY CASCADE"
             )
