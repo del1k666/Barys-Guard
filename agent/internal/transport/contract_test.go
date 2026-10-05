@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/transport"
 )
 
@@ -65,6 +66,8 @@ func TestStructsCoverEveryRequiredContractField(t *testing.T) {
 		{"HeartbeatResponse", transport.HeartbeatResponse{}},
 		{"QueuedCommand", transport.QueuedCommand{}},
 		{"CommandResultRequest", transport.CommandResultRequest{}},
+		{"EventEnvelope", events.Envelope{}},
+		{"EventsResult", transport.EventsResult{}},
 	}
 
 	for _, testCase := range cases {
@@ -95,6 +98,8 @@ func TestNoStructFieldIsAbsentFromContract(t *testing.T) {
 		{"HeartbeatRequest", transport.HeartbeatRequest{}},
 		{"EnrollRequest", transport.EnrollRequest{}},
 		{"CommandResultRequest", transport.CommandResultRequest{}},
+		{"EventEnvelope", events.Envelope{}},
+		{"EventsResult", transport.EventsResult{}},
 	}
 
 	for _, testCase := range cases {

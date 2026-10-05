@@ -38,9 +38,7 @@ type RenewResponse struct {
 	NotAfter       time.Time `json:"not_after"`
 }
 
-// HeartbeatRequest несёт поля буфера, которых у агента этого плана нет:
-// контракт задаёт форму запроса, и соответствовать ей агент обязан
-// независимо от собственной полноты. Отправляются нули.
+// HeartbeatRequest сообщает серверу состояние offline-буфера событий.
 type HeartbeatRequest struct {
 	AgentVersion   string    `json:"agent_version"`
 	ConfigVersion  int       `json:"config_version"`
@@ -71,4 +69,17 @@ type ConfigResponse struct {
 type CommandResultRequest struct {
 	Status string         `json:"status"`
 	Result map[string]any `json:"result"`
+}
+
+// RejectedEvent — строка пакета, которую сервер не принял. Повторять её
+// бессмысленно: такое событие не станет верным от повторной отправки.
+type RejectedEvent struct {
+	Line   int    `json:"line"`
+	Reason string `json:"reason"`
+}
+
+type EventsResult struct {
+	Accepted   int             `json:"accepted"`
+	Duplicates int             `json:"duplicates"`
+	Rejected   []RejectedEvent `json:"rejected"`
 }

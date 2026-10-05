@@ -108,3 +108,30 @@ func (c *Client) CommandResult(ctx context.Context, commandID string, in Command
 		in, nil,
 	)
 }
+
+// SendEvents отправляет пакет событий (NDJSON, по строке на событие).
+//
+// Отдельно от request: тело — не JSON, а готовые строки, и Content-Type другой.
+func (c *Client) SendEvents(ctx context.Context, ndjson []byte) (EventsResult, error) {
+	req, err := http.NewRequest(
+		http.MethodPost,
+		c.base.JoinPath("gateway", "v1", "events").String(),
+		bytes.NewReader(ndjson),
+	)
+	if err != nil {
+		return EventsResult{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-ndjson")
+
+	resp, err := c.do(ctx, req)
+	if err != nil {
+		return EventsResult{}, err
+	}
+	defer resp.Body.Close()
+
+	var out EventsResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return EventsResult{}, fmt.Errorf("разбор ответа приёма событий: %w", err)
+	}
+	return out, nil
+}
