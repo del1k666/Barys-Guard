@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/barysguard/agent/internal/buffer"
+	"github.com/barysguard/agent/internal/collectors"
 	"github.com/barysguard/agent/internal/collectors/lifecycle"
 	"github.com/barysguard/agent/internal/config"
 	"github.com/barysguard/agent/internal/events"
@@ -122,13 +123,14 @@ func loadAgent(dataDir string) (*runner.Agent, config.Layout, error) {
 	}
 
 	agent, err := runner.New(runner.Options{
-		ServerURL:    settings.ServerURL,
-		AgentVersion: agentVersion,
-		Layout:       layout,
-		Guard:        guard,
-		Client:       client,
-		Buffer:       buf,
-		Collectors:   []events.Collector{lifecycle.New(agentVersion)},
+		ServerURL:        settings.ServerURL,
+		AgentVersion:     agentVersion,
+		Layout:           layout,
+		Guard:            guard,
+		Client:           client,
+		Buffer:           buf,
+		Collectors:       []events.Collector{lifecycle.New(agentVersion)},
+		CollectorFactory: collectors.NewFactory(layout.Dir),
 	})
 	if err != nil {
 		buf.Close()

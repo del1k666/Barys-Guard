@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"sync"
 
 	"github.com/barysguard/agent/internal/buffer"
@@ -67,6 +68,16 @@ func (a *Agent) StartEvents(ctx context.Context) (stop func()) {
 		}()
 	}
 
+	if factory := a.options.CollectorFactory; factory != nil {
+		document := a.state.Document
+		a.collectorsDoc = document["collectors"]
+		collectors.Add(1)
+		go func() {
+			defer collectors.Done()
+			a.superviseCollectors(collectorCtx, factory, document)
+		}()
+	}
+
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)
@@ -79,6 +90,67 @@ func (a *Agent) StartEvents(ctx context.Context) (stop func()) {
 		a.queue.Close()
 		<-drained
 	}
+}
+
+// superviseCollectors держит группу сборщиков из фабрики и пересоздаёт её по
+// новому документу. Остановка старой группы дожидается возврата всех её
+// сборщиков: новая не должна работать параллельно со старой, иначе один том
+// наблюдался бы дважды.
+func (a *Agent) superviseCollectors(ctx context.Context, factory func(map[string]any) []events.Collector, document map[string]any) {
+	var cancelGroup context.CancelFunc
+	var group sync.WaitGroup
+
+	startGroup := func(document map[string]any) {
+		groupCtx, cancel := context.WithCancel(ctx)
+		cancelGroup = cancel
+		for _, collector := range factory(document) {
+			group.Add(1)
+			go func() {
+				defer group.Done()
+				if err := collector.Run(groupCtx, a.queue.Emit); err != nil {
+					slog.Error("сборщик остановился с ошибкой", "collector", collector.Name(), "error", err)
+				}
+			}()
+		}
+	}
+	stopGroup := func() {
+		if cancelGroup != nil {
+			cancelGroup()
+			group.Wait()
+		}
+	}
+
+	startGroup(document)
+	for {
+		select {
+		case <-ctx.Done():
+			stopGroup()
+			return
+		case next := <-a.reload:
+			stopGroup()
+			startGroup(next)
+		}
+	}
+}
+
+// notifyCollectorsReload просит пересоздать группу, если изменился раздел
+// collectors. Смена других разделов группу не трогает: перезапуск опроса
+// томов продублировал бы usb/mount для уже вставленных флешек.
+func (a *Agent) notifyCollectorsReload() {
+	if a.options.CollectorFactory == nil || a.options.Buffer == nil {
+		return
+	}
+	section := a.state.Document["collectors"]
+	if reflect.DeepEqual(section, a.collectorsDoc) {
+		return
+	}
+	a.collectorsDoc = section
+	// Нужен только самый свежий документ: устаревший ожидающий отбрасывается.
+	select {
+	case <-a.reload:
+	default:
+	}
+	a.reload <- a.state.Document
 }
 
 // Close освобождает буфер событий.

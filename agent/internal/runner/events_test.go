@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,13 +26,14 @@ import (
 
 // fakeGateway — шлюз, принимающий heartbeat, конфигурацию и события.
 type fakeGateway struct {
-	mu            sync.Mutex
-	down          atomic.Bool
-	maxLines      int // при > 0 пакеты длиннее отвергаются кодом 413
-	rejectAll     bool
-	configVersion int
-	ids           map[string]int
-	heartbeat     transport.HeartbeatRequest
+	mu             sync.Mutex
+	down           atomic.Bool
+	maxLines       int // при > 0 пакеты длиннее отвергаются кодом 413
+	rejectAll      bool
+	configVersion  int
+	configDocument map[string]any
+	ids            map[string]int
+	heartbeat      transport.HeartbeatRequest
 }
 
 func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -47,7 +49,11 @@ func (g *fakeGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 	case "/gateway/v1/config":
 		w.Header().Set("ETag", `"99"`)
-		json.NewEncoder(w).Encode(transport.ConfigResponse{Version: 99, Document: map[string]any{}})
+		document := g.configDocument
+		if document == nil {
+			document = map[string]any{}
+		}
+		json.NewEncoder(w).Encode(transport.ConfigResponse{Version: 99, Document: document})
 	case "/gateway/v1/events":
 		if g.down.Load() {
 			http.Error(w, "недоступен", http.StatusServiceUnavailable)
@@ -319,5 +325,135 @@ func TestRevokedAgentExitsEvenWithRunningCollectors(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run завис: сборщики не остановлены после отзыва")
+	}
+}
+
+// probeCollector считает запуски и останавливается по отмене своего контекста.
+type probeCollector struct {
+	starts, stops *atomic.Int32
+}
+
+func (p probeCollector) Name() string { return "probe" }
+func (p probeCollector) Run(ctx context.Context, _ func(events.Envelope)) error {
+	p.starts.Add(1)
+	<-ctx.Done()
+	p.stops.Add(1)
+	return nil
+}
+
+type factoryProbe struct {
+	calls         atomic.Int32
+	starts, stops atomic.Int32
+	mu            sync.Mutex
+	docs          []map[string]any
+}
+
+func (f *factoryProbe) build(doc map[string]any) []events.Collector {
+	f.calls.Add(1)
+	f.mu.Lock()
+	f.docs = append(f.docs, doc)
+	f.mu.Unlock()
+	return []events.Collector{probeCollector{starts: &f.starts, stops: &f.stops}}
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("не дождались: %s", what)
+}
+
+func newFactoryAgent(t *testing.T, gateway *fakeGateway, state config.State, probe *factoryProbe) *runner.Agent {
+	t.Helper()
+	gateway.ids = map[string]int{}
+	ca := newRunnerCA(t)
+	server := newRunnerTLSServer(t, ca, gateway)
+	layout := config.NewLayout(t.TempDir())
+	guard := platform.New()
+	if err := config.SaveState(layout, state, guard); err != nil {
+		t.Fatal(err)
+	}
+	client, err := transport.NewMutual(server.URL, ca.pool(), ca.issue(t, "agent", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf, err := buffer.Open(buffer.Options{
+		Path: filepath.Join(t.TempDir(), "events.db"), Key: bytes.Repeat([]byte{7}, 32),
+		MaxBytes: 1 << 30, MaxAge: 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { buf.Close() })
+
+	agent, err := runner.New(runner.Options{
+		ServerURL: server.URL, AgentVersion: "0.1.0", Layout: layout, Guard: guard, Client: client,
+		Random: rand.NewSource(1), Buffer: buf, CollectorFactory: probe.build,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agent
+}
+
+func TestFactoryCollectorsStartWithTheSavedDocument(t *testing.T) {
+	probe := &factoryProbe{}
+	state := config.State{ConfigVersion: 5, Document: map[string]any{"collectors": map[string]any{"usb": map[string]any{"enabled": false}}}}
+	agent := newFactoryAgent(t, &fakeGateway{configVersion: 5}, state, probe)
+
+	stop := agent.StartEvents(context.Background())
+	waitFor(t, "сборщик запущен", func() bool { return probe.starts.Load() == 1 })
+	stop()
+
+	if probe.stops.Load() != 1 {
+		t.Fatal("сборщик не остановлен вместе с агентом")
+	}
+	if usb, _ := probe.docs[0]["collectors"].(map[string]any)["usb"].(map[string]any); usb["enabled"] != false {
+		t.Fatalf("фабрика получила не сохранённый документ: %+v", probe.docs[0])
+	}
+}
+
+// Смена версии без смены раздела collectors не должна перезапускать сборщики:
+// повторный старт опроса томов продублировал бы usb/mount для вставленных флешек.
+func TestConfigChangeOutsideCollectorsDoesNotRestartThem(t *testing.T) {
+	probe := &factoryProbe{}
+	gateway := &fakeGateway{configVersion: 99, configDocument: map[string]any{"logging": map[string]any{"level": "debug"}}}
+	agent := newFactoryAgent(t, gateway, config.State{ConfigVersion: 1}, probe)
+
+	stop := agent.StartEvents(context.Background())
+	waitFor(t, "первый запуск", func() bool { return probe.starts.Load() == 1 })
+	agent.RunOnce(context.Background()) // версия 99 ≠ 1: документ сменился, но collectors нет
+	time.Sleep(200 * time.Millisecond)
+	stop()
+
+	if probe.calls.Load() != 1 || probe.starts.Load() != 1 {
+		t.Fatalf("фабрика вызвана %d раз, запусков %d: перезапуска быть не должно", probe.calls.Load(), probe.starts.Load())
+	}
+}
+
+func TestChangedCollectorsSectionRestartsTheGroupWithTheNewDocument(t *testing.T) {
+	probe := &factoryProbe{}
+	newCollectors := map[string]any{"usb": map[string]any{"enabled": false}}
+	gateway := &fakeGateway{configVersion: 99, configDocument: map[string]any{"collectors": newCollectors}}
+	agent := newFactoryAgent(t, gateway, config.State{ConfigVersion: 1}, probe)
+
+	stop := agent.StartEvents(context.Background())
+	waitFor(t, "первый запуск", func() bool { return probe.starts.Load() == 1 })
+	agent.RunOnce(context.Background())
+	waitFor(t, "перезапуск группы", func() bool { return probe.starts.Load() == 2 })
+	stop()
+
+	if probe.stops.Load() != 2 {
+		t.Fatalf("остановок %d: старая группа обязана остановиться до новой", probe.stops.Load())
+	}
+	probe.mu.Lock()
+	defer probe.mu.Unlock()
+	if got := probe.docs[1]["collectors"]; !reflect.DeepEqual(got, newCollectors) {
+		t.Fatalf("новая группа собрана по старому документу: %+v", got)
 	}
 }

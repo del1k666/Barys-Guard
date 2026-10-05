@@ -47,17 +47,24 @@ type Options struct {
 	Buffer EventBuffer
 	// Collectors запускаются в Run и в StartEvents.
 	Collectors []events.Collector
+	// CollectorFactory строит сборщики, зависящие от конфигурации. Группа
+	// запускается при StartEvents и пересоздаётся, когда меняется раздел
+	// collectors документа. Сборщики из Collectors от конфигурации не зависят
+	// и не перезапускаются.
+	CollectorFactory func(document map[string]any) []events.Collector
 }
 
 type Agent struct {
-	options    Options
-	state      config.State
-	backoff    *Backoff
-	random     *rand.Rand
-	dispatcher Dispatcher
-	pending    []pendingResult
-	queue      *events.Queue
-	batchCap   int // верхний предел пакета после ответа 413
+	options       Options
+	state         config.State
+	backoff       *Backoff
+	random        *rand.Rand
+	dispatcher    Dispatcher
+	pending       []pendingResult
+	queue         *events.Queue
+	reload        chan map[string]any
+	collectorsDoc any
+	batchCap      int // верхний предел пакета после ответа 413
 
 	startedAt       time.Time
 	lastHeartbeatAt time.Time
@@ -87,6 +94,7 @@ func New(options Options) (*Agent, error) {
 		random:    rand.New(options.Random),
 		startedAt: options.Now(),
 		queue:     events.NewQueue(queueCapacity),
+		reload:    make(chan map[string]any, 1),
 	}
 	// Диспетчер замыкается на агента: обе функции обращаются к его состоянию.
 	agent.dispatcher = NewDispatcher(agent.refreshConfig, agent.diagnostics)
@@ -115,6 +123,7 @@ func (a *Agent) refreshConfig(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	a.emitConfigApplied(response.Version)
+	a.notifyCollectorsReload()
 	return response.Version, nil
 }
 
@@ -139,6 +148,7 @@ func (a *Agent) syncConfig(ctx context.Context, serverVersion int) error {
 		return err
 	}
 	a.emitConfigApplied(response.Version)
+	a.notifyCollectorsReload()
 	return nil
 }
 
