@@ -96,6 +96,18 @@ Assert-Step 'не меньше пяти агентов активны' {
         })
 }
 
+Assert-Step 'агенты прислали события start (канал agent)' {
+    # Агент пишет start при запуске и отправляет его на ближайшем heartbeat.
+    [void](Wait-Until -TimeoutSec 120 -What 'события start от пяти агентов' -Probe {
+            $r = Invoke-Api -Method GET -Url "$base/api/v1/events?channel=agent&action=start&limit=200" -Session $session
+            $ids = @{}
+            if ($r.Status -eq 200) {
+                foreach ($event in @($r.Json.items)) { $ids[$event.agent_id] = $true }
+            }
+            [pscustomobject]@{ Done = ($ids.Count -ge 5); Note = "агентов с событием start: $($ids.Count) (HTTP $($r.Status))" }
+        })
+}
+
 Assert-Step 'агенты распределены по группам Бухгалтерия (3) и ИТ (2)' {
     $r = Invoke-Api -Method GET -Url "$base/api/v1/groups" -Session $session
     Expect-Equal $r.Status 200 'GET /api/v1/groups'
