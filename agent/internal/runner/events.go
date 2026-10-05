@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/buffer"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/transport"
@@ -75,6 +76,15 @@ func (a *Agent) StartEvents(ctx context.Context) (stop func()) {
 		go func() {
 			defer collectors.Done()
 			a.superviseCollectors(collectorCtx, factory, document)
+		}()
+	}
+
+	if worker := a.options.Artifacts; worker != nil {
+		worker.SetConfig(artifacts.ConfigFromDocument(a.state.Document))
+		collectors.Add(1)
+		go func() {
+			defer collectors.Done()
+			worker.Run(collectorCtx, a.queue.Emit)
 		}()
 	}
 
@@ -238,5 +248,12 @@ func (a *Agent) flushEvents(ctx context.Context) {
 			slog.Error("подтверждение в буфере не удалось", "error", err)
 			return
 		}
+	}
+}
+
+// applyArtifactConfig отдаёт воркеру загрузки свежий раздел collectors.artifact.
+func (a *Agent) applyArtifactConfig() {
+	if worker := a.options.Artifacts; worker != nil {
+		worker.SetConfig(artifacts.ConfigFromDocument(a.state.Document))
 	}
 }

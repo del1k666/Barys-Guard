@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/collectors/filewatch"
 	"github.com/barysguard/agent/internal/collectors/usb"
 	"github.com/barysguard/agent/internal/events"
@@ -23,6 +24,7 @@ type Platform struct {
 	Attributor   filewatch.Attributor
 	StartWatcher filewatch.StartWatcher
 	Profiles     func() []string
+	Stager       artifacts.Stager
 }
 
 func DefaultPlatform() Platform {
@@ -82,6 +84,7 @@ func Build(document map[string]any, dataDir string, plat Platform) []events.Coll
 		list = append(list, filewatch.New(filewatch.Deps{
 			Config: cfg, Hub: hub, Identity: plat.Identity,
 			Attributor: plat.Attributor, StartWatcher: plat.StartWatcher,
+			Stager: plat.Stager,
 		}))
 	}
 	return list

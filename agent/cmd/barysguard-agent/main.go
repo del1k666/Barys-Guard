@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/buffer"
 	"github.com/barysguard/agent/internal/collectors"
 	"github.com/barysguard/agent/internal/collectors/lifecycle"
@@ -122,6 +123,25 @@ func loadAgent(dataDir string) (*runner.Agent, config.Layout, error) {
 		return nil, layout, fmt.Errorf("буфер событий: %w", err)
 	}
 
+	// Копии файлов шифруются тем же ключом, что и буфер событий.
+	key, _, err := buffer.LoadOrCreateKey(layout, guard)
+	if err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("ключ копий файлов: %w", err)
+	}
+	if err := guard.SecureDir(layout.StagingDir()); err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("каталог копий файлов: %w", err)
+	}
+	store, err := artifacts.NewStore(layout.StagingDir(), key, time.Now)
+	if err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("каталог копий файлов: %w", err)
+	}
+	store.SetConfig(artifacts.ConfigFromDocument(state.Document))
+	plat := collectors.DefaultPlatform()
+	plat.Stager = store
+
 	agent, err := runner.New(runner.Options{
 		ServerURL:        settings.ServerURL,
 		AgentVersion:     agentVersion,
@@ -130,7 +150,8 @@ func loadAgent(dataDir string) (*runner.Agent, config.Layout, error) {
 		Client:           client,
 		Buffer:           buf,
 		Collectors:       []events.Collector{lifecycle.New(agentVersion)},
-		CollectorFactory: collectors.NewFactory(layout.Dir),
+		CollectorFactory: collectors.NewFactoryFor(plat, layout.Dir),
+		Artifacts:        artifacts.NewWorker(store, client),
 	})
 	if err != nil {
 		buf.Close()

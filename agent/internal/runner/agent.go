@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/config"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/keystore"
@@ -32,6 +33,12 @@ type pendingResult struct {
 	body      transport.CommandResultRequest
 }
 
+// ArtifactWorker — загрузка на сервер копий файлов с внешних томов.
+type ArtifactWorker interface {
+	Run(ctx context.Context, emit func(events.Envelope))
+	SetConfig(artifacts.Config)
+}
+
 type Options struct {
 	ServerURL    string
 	AgentVersion string
@@ -52,6 +59,9 @@ type Options struct {
 	// collectors документа. Сборщики из Collectors от конфигурации не зависят
 	// и не перезапускаются.
 	CollectorFactory func(document map[string]any) []events.Collector
+	// Artifacts отправляет копии файлов на сервер. nil — загрузки нет.
+	// Запускается вместе со сборщиками и применяет раздел collectors.artifact.
+	Artifacts ArtifactWorker
 }
 
 type Agent struct {
@@ -123,6 +133,7 @@ func (a *Agent) refreshConfig(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	a.emitConfigApplied(response.Version)
+	a.applyArtifactConfig()
 	a.notifyCollectorsReload()
 	return response.Version, nil
 }
@@ -148,6 +159,7 @@ func (a *Agent) syncConfig(ctx context.Context, serverVersion int) error {
 		return err
 	}
 	a.emitConfigApplied(response.Version)
+	a.applyArtifactConfig()
 	a.notifyCollectorsReload()
 	return nil
 }
