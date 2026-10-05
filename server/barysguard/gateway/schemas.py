@@ -79,3 +79,22 @@ class EventsResult(BaseModel):
     accepted: int
     duplicates: int
     rejected: list[RejectedLine]
+
+
+class ArtifactOpenRequest(BaseModel):
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+
+
+class ArtifactOpenResponse(BaseModel):
+    # exists — байты не нужны; upload — открыта (или продолжена) сессия.
+    status: str
+    upload_id: uuid.UUID | None = None
+    received_bytes: int | None = None
+    chunk_size: int | None = None
+
+
+class ArtifactChunkResponse(BaseModel):
+    received_bytes: int
+    # partial | complete
+    status: str

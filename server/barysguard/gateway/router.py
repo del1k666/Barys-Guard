@@ -1,9 +1,10 @@
 import ipaddress
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,9 @@ from barysguard.db.session import get_session
 from barysguard.gateway.deps import CLIENT_IP_HEADER, SERIAL_HEADER, current_agent
 from barysguard.gateway.schemas import (
     AgentConfigResponse,
+    ArtifactChunkResponse,
+    ArtifactOpenRequest,
+    ArtifactOpenResponse,
     CommandResultRequest,
     EnrollRequest,
     EnrollResponse,
@@ -30,6 +34,13 @@ from barysguard.gateway.schemas import (
 from barysguard.pki.ca import CertificateAuthority
 from barysguard.pki.provider import get_ca
 from barysguard.pki.service import issue_certificate, supersede_certificate
+from barysguard.services.artifacts import (
+    ArtifactTooLarge,
+    ChunkRejected,
+    UploadNotFound,
+    append_chunk,
+    open_upload,
+)
 from barysguard.services.commands import (
     MAX_COMMANDS_PER_HEARTBEAT,
     MAX_RESULT_BYTES,
@@ -45,8 +56,10 @@ from barysguard.services.events import (
     parse_batch,
     store_events,
 )
+from barysguard.storage.artifact_store import FileArtifactStore, build_store
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/ca", response_class=Response)
@@ -312,3 +325,99 @@ async def ingest_events(
         duplicates=len(parsed.events) - inserted,
         rejected=[RejectedLine(line=r.line, reason=r.reason) for r in parsed.rejected],
     )
+
+
+def _artifact_store(settings: Settings) -> FileArtifactStore:
+    try:
+        store = build_store(settings)
+    except (ValueError, OSError):
+        logger.error("мастер-ключ артефактов задан неверно", exc_info=True)
+        store = None
+    if store is None:
+        # Остальной шлюз работает; агент считает это временной ошибкой.
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "artifact storage not configured")
+    return store
+
+
+@router.post("/artifacts", response_model=ArtifactOpenResponse)
+async def open_artifact_upload(
+    payload: ArtifactOpenRequest,
+    response: Response,
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ArtifactOpenResponse:
+    """Открыть загрузку: сервер либо уже имеет артефакт, либо выдаёт сессию."""
+    _artifact_store(settings)
+    try:
+        result = await open_upload(session, agent, payload.sha256, payload.size, settings)
+    except ArtifactTooLarge as exc:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "artifact too large") from exc
+
+    if result.exists:
+        response.status_code = status.HTTP_200_OK
+        return ArtifactOpenResponse(status="exists")
+    response.status_code = status.HTTP_201_CREATED
+    return ArtifactOpenResponse(
+        status="upload",
+        upload_id=result.upload_id,
+        received_bytes=result.received_bytes,
+        chunk_size=settings.artifact_chunk_bytes,
+    )
+
+
+@router.put(
+    "/artifacts/{upload_id}",
+    response_model=ArtifactChunkResponse,
+    # Тело — сырые байты, FastAPI его не описывает: контракт задаётся вручную.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+            },
+        }
+    },
+)
+async def upload_artifact_chunk(
+    upload_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    x_offset: int = Header(alias="X-Offset", ge=0),
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ArtifactChunkResponse | JSONResponse:
+    """Очередной чанк. Смещение обязано совпасть с числом уже принятых байт."""
+    store = _artifact_store(settings)
+    limit = settings.artifact_chunk_bytes
+
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "chunk too large")
+
+    parts: list[bytes] = []
+    size = 0
+    async for part in request.stream():
+        size += len(part)
+        if size > limit:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "chunk too large")
+        parts.append(part)
+
+    try:
+        result = await append_chunk(
+            session, agent, upload_id, x_offset, b"".join(parts), settings, store
+        )
+    except UploadNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "upload not found") from exc
+    except ChunkRejected as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "chunk rejected") from exc
+
+    if result.status == "offset_mismatch":
+        return JSONResponse({"received_bytes": result.received_bytes}, status.HTTP_409_CONFLICT)
+    if result.status == "hash_mismatch":
+        return JSONResponse({"detail": "hash mismatch"}, status.HTTP_422_UNPROCESSABLE_CONTENT)
+
+    complete = result.status == "complete"
+    response.status_code = status.HTTP_201_CREATED if complete else status.HTTP_202_ACCEPTED
+    return ArtifactChunkResponse(received_bytes=result.received_bytes, status=result.status)
