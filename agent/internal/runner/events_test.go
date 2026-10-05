@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"math/rand"
 	"net/http"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/barysguard/agent/internal/buffer"
+	"github.com/barysguard/agent/internal/collectors/lifecycle"
 	"github.com/barysguard/agent/internal/config"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/platform"
@@ -94,9 +96,21 @@ func (g *fakeGateway) received() map[string]int {
 func newEventAgent(t *testing.T, gateway *fakeGateway, state config.State) (*runner.Agent, *buffer.Buffer) {
 	t.Helper()
 	gateway.ids = map[string]int{}
+	return newEventAgentWithHandler(t, gateway, nil, state)
+}
+
+// newEventAgentWithHandler — то же поверх произвольного обработчика и со сборщиками.
+func newEventAgentWithHandler(
+	t *testing.T, handler http.Handler, collectors []events.Collector, states ...config.State,
+) (*runner.Agent, *buffer.Buffer) {
+	t.Helper()
+	state := config.State{}
+	if len(states) > 0 {
+		state = states[0]
+	}
 
 	ca := newRunnerCA(t)
-	server := newRunnerTLSServer(t, ca, gateway)
+	server := newRunnerTLSServer(t, ca, handler)
 	layout := config.NewLayout(t.TempDir())
 	guard := platform.New()
 	if err := config.SaveState(layout, state, guard); err != nil {
@@ -120,7 +134,7 @@ func newEventAgent(t *testing.T, gateway *fakeGateway, state config.State) (*run
 
 	agent, err := runner.New(runner.Options{
 		ServerURL: server.URL, AgentVersion: "0.1.0", Layout: layout, Guard: guard,
-		Client: client, Random: rand.NewSource(1), Buffer: buf,
+		Client: client, Random: rand.NewSource(1), Buffer: buf, Collectors: collectors,
 	})
 	if err != nil {
 		t.Fatalf("runner.New: %v", err)
@@ -283,5 +297,27 @@ func TestConfigChangeEmitsConfigAppliedEvent(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("config_applied не найден среди %d событий", batch.Len())
+	}
+}
+
+// Отозванный агент обязан завершиться кодом отзыва даже при живых сборщиках:
+// lifecycle ждёт отмены контекста, и без явной остановки сборщиков Run
+// зависал бы навсегда, а main до os.Exit(exitRevoked) не доходил.
+func TestRevokedAgentExitsEvenWithRunningCollectors(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "отозван", http.StatusForbidden)
+	})
+	agent, _ := newEventAgentWithHandler(t, handler, []events.Collector{lifecycle.New("test")})
+
+	done := make(chan error, 1)
+	go func() { done <- agent.Run(context.Background()) }()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, runner.ErrRevoked) {
+			t.Fatalf("Run вернул %v, ожидался ErrRevoked", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run завис: сборщики не остановлены после отзыва")
 	}
 }

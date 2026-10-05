@@ -95,3 +95,26 @@ def test_undecodable_or_empty_body_is_unreadable() -> None:
         parse_batch(b"\xff\xfe\x00", max_lines=10)
     with pytest.raises(BatchUnreadableError):
         parse_batch(b"\n  \n", max_lines=10)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"occurred_at": "9999-12-31T23:59:59-05:00"},
+        {"occurred_at": "0001-01-01T00:00:00+05:00"},
+        {"labels": {"clip": "a\u0000b"}},
+        {"subject": {"nested": [{"k\u0000ey": 1}]}},
+        {"labels": {"lone": "\ud800"}},
+        {"action": "st\u0000art"},
+    ],
+    ids=["max-time", "min-time", "nul-in-value", "nul-in-key", "lone-surrogate", "nul-in-action"],
+)
+def test_values_the_database_cannot_store_are_rejected_per_event(overrides: dict) -> None:
+    # Такие значения проходят pydantic, но роняли бы INSERT всего пакета и
+    # навсегда останавливали отправку событий этого агента.
+    body = _body(json.dumps(_event(**overrides)), json.dumps(_event()))
+
+    parsed = parse_batch(body, max_lines=10)
+
+    assert [(r.line, r.reason) for r in parsed.rejected] == [(1, "invalid_event")]
+    assert [line for line, _ in parsed.events] == [2]

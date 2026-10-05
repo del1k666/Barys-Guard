@@ -3,6 +3,7 @@ package buffer_test
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/barysguard/agent/internal/buffer"
@@ -72,5 +73,39 @@ func TestOpenAtResetsBufferWhenKeyIsLost(t *testing.T) {
 	}
 	if count, _ := second.Stats(); count != 0 {
 		t.Fatalf("буфер не пуст: %d", count)
+	}
+}
+
+// Повреждённый файл буфера (обрыв питания, сбой диска) не должен мешать
+// агенту стартовать: иначе вместе с буфером встают heartbeat, команды и
+// продление сертификата.
+func TestOpenAtRecoversFromCorruptDatabase(t *testing.T) {
+	layout := config.NewLayout(t.TempDir())
+	guard := platform.New()
+	first, _, err := buffer.OpenAt(layout, guard, buffer.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	if err := os.WriteFile(layout.BufferPath(), bytes.Repeat([]byte("мусор"), 2000), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	second, reset, err := buffer.OpenAt(layout, guard, buffer.DefaultLimits())
+	if err != nil {
+		t.Fatalf("OpenAt с повреждённым файлом: %v", err)
+	}
+	defer second.Close()
+
+	if !reset {
+		t.Fatal("пересоздание буфера не сообщено")
+	}
+	matches, _ := filepath.Glob(layout.BufferPath() + ".corrupt-*")
+	if len(matches) != 1 {
+		t.Fatalf("повреждённый файл не сохранён рядом для разбора: %v", matches)
+	}
+	env, _ := events.NewEnvelope(events.ChannelAgent, "start", events.SeverityInfo, nil)
+	if err := second.Append(env); err != nil {
+		t.Fatalf("новый буфер не работает: %v", err)
 	}
 }

@@ -165,3 +165,19 @@ async def test_event_with_far_past_time_is_kept_in_default_partition(app_client,
         )
     ).scalar_one()
     assert table == "events_default"
+
+
+async def test_unstorable_event_does_not_fail_the_batch(app_client, session) -> None:
+    agent = await enroll_agent(app_client, session, "ingest-unstorable")
+
+    response = await _post(
+        app_client,
+        agent,
+        _event(labels={"clip": "a\u0000b"}),
+        _event(occurred_at="9999-12-31T23:59:59-05:00"),
+        _event(),
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["accepted"] == 1
+    assert [r["reason"] for r in response.json()["rejected"]] == ["invalid_event"] * 2

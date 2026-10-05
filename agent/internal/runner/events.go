@@ -51,12 +51,17 @@ func (a *Agent) StartEvents(ctx context.Context) (stop func()) {
 	}
 	buf := a.options.Buffer
 
+	// Сборщики получают свой контекст: Run может вернуться раньше сигнала
+	// (сервер отозвал сертификат), и сборщик, ждущий отмены, иначе не
+	// остановился бы никогда, а main так и не дошёл бы до кода отзыва.
+	collectorCtx, cancelCollectors := context.WithCancel(ctx)
+
 	var collectors sync.WaitGroup
 	for _, collector := range a.options.Collectors {
 		collectors.Add(1)
 		go func() {
 			defer collectors.Done()
-			if err := collector.Run(ctx, a.queue.Emit); err != nil {
+			if err := collector.Run(collectorCtx, a.queue.Emit); err != nil {
 				slog.Error("сборщик остановился с ошибкой", "collector", collector.Name(), "error", err)
 			}
 		}()
@@ -69,6 +74,7 @@ func (a *Agent) StartEvents(ctx context.Context) (stop func()) {
 	}()
 
 	return func() {
+		cancelCollectors()
 		collectors.Wait()
 		a.queue.Close()
 		<-drained

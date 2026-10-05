@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/barysguard/agent/internal/config"
 	"github.com/barysguard/agent/internal/platform"
 )
@@ -73,13 +75,27 @@ func OpenAt(layout config.Layout, guard platform.Guard, limits Limits) (*Buffer,
 	if err := guard.SecureDir(layout.Dir); err != nil {
 		return nil, false, err
 	}
-	buf, err := Open(Options{
+	options := Options{
 		Path:     layout.BufferPath(),
 		Key:      key,
 		MaxBytes: limits.MaxBytes,
 		MaxAge:   limits.MaxAge,
 		Now:      time.Now,
-	})
+	}
+	buf, err := Open(options)
+	if err != nil && !errors.Is(err, bolt.ErrTimeout) {
+		// Файл повреждён (обрыв питания, сбой диска). Агент без буфера
+		// остановил бы и heartbeat, и команды, и продление сертификата,
+		// поэтому файл откладывается рядом для разбора, а буфер создаётся заново.
+		// Таймаут блокировки сюда не относится: файл занят другим процессом,
+		// а не испорчен, и трогать его нельзя.
+		aside := fmt.Sprintf("%s.corrupt-%d", layout.BufferPath(), time.Now().Unix())
+		if renameErr := os.Rename(layout.BufferPath(), aside); renameErr != nil {
+			return nil, false, fmt.Errorf("%w (перенос повреждённого буфера: %v)", err, renameErr)
+		}
+		reset = true
+		buf, err = Open(options)
+	}
 	if err != nil {
 		return nil, false, err
 	}

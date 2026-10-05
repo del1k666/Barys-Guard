@@ -5,6 +5,10 @@ from datetime import UTC, date, datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Окно, в пределах которого события из events_default получают собственные разделы.
+PAST_WINDOW_MONTHS = 36
+FUTURE_WINDOW_MONTHS = 12
+
 
 def _add_months(first_of_month: date, months: int) -> date:
     index = first_of_month.year * 12 + (first_of_month.month - 1) + months
@@ -51,9 +55,26 @@ async def ensure_event_partitions(
     first = (today or datetime.now(UTC).date()).replace(day=1)
     created: list[str] = []
 
-    for offset in range(months_ahead + 1):
-        start = _add_months(first, offset)
-        end = _add_months(first, offset + 1)
+    months = {_add_months(first, offset) for offset in range(months_ahead + 1)}
+
+    # Сервер, проработавший месяцы без перезапуска, оставил события прошлых
+    # месяцев в events_default. Разделы под них создаются тоже, но только в
+    # разумном окне: часы агента, ушедшие на десятки лет, не должны порождать
+    # тысячи разделов.
+    window_start = _add_months(first, -PAST_WINDOW_MONTHS)
+    window_end = _add_months(first, FUTURE_WINDOW_MONTHS)
+    stray = (
+        await session.execute(
+            text(
+                "SELECT DISTINCT date_trunc('month', occurred_at AT TIME ZONE 'UTC')::date "
+                "FROM events_default"
+            )
+        )
+    ).scalars()
+    months.update(month for month in stray if window_start <= month <= window_end)
+
+    for start in sorted(months):
+        end = _add_months(start, 1)
         name = f"events_{start:%Y_%m}"
 
         exists = (

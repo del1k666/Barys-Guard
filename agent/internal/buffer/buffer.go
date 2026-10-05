@@ -57,6 +57,44 @@ type Buffer struct {
 	count int
 	bytes int64
 	lost  uint64
+	// rankBytes — занятые байты по рангам критичности. Позволяет решить, что
+	// место освободить нельзя, не обходя весь буфер: на заполненном буфере
+	// в сотни мегабайт обход под блокировкой записи на каждое событие остановил бы отправку.
+	rankBytes [ranks]int64
+}
+
+const ranks = int(events.CriticalRank) + 1
+
+// removal — итог удаления записей: сколько и сколько байт по рангам.
+type removal struct {
+	count int
+	bytes [ranks]int64
+}
+
+func (r *removal) add(value []byte) {
+	r.count++
+	r.bytes[rankOf(value)] += int64(len(value))
+}
+
+func (r *removal) merge(other removal) {
+	r.count += other.count
+	for i := range r.bytes {
+		r.bytes[i] += other.bytes[i]
+	}
+}
+
+func (r removal) total() (sum int64) {
+	for _, n := range r.bytes {
+		sum += n
+	}
+	return sum
+}
+
+func rankOf(value []byte) int {
+	if len(value) == 0 || int(value[0]) >= ranks {
+		return 0
+	}
+	return int(value[0])
 }
 
 // Batch — пакет записей, ожидающих подтверждения.
@@ -111,6 +149,7 @@ func Open(opts Options) (*Buffer, error) {
 		return bucket.ForEach(func(_, value []byte) error {
 			b.count++
 			b.bytes += int64(len(value))
+			b.rankBytes[rankOf(value)] += int64(len(value))
 			return nil
 		})
 	})
@@ -163,12 +202,12 @@ func deleteKeys(bucket *bolt.Bucket, keys [][]byte) error {
 
 // expire удаляет записи старше MaxAge, кроме critical. Записи упорядочены
 // по времени, поэтому обход идёт до первой свежей некритичной.
-func (b *Buffer) expire(bucket *bolt.Bucket, now time.Time) (int, int64, error) {
+func (b *Buffer) expire(bucket *bolt.Bucket, now time.Time) (removal, error) {
+	var gone removal
 	if b.opts.MaxAge <= 0 {
-		return 0, 0, nil
+		return gone, nil
 	}
 	var keys [][]byte
-	var freed int64
 	cursor := bucket.Cursor()
 	for key, value := cursor.First(); key != nil; key, value = cursor.Next() {
 		if len(value) < headerSize {
@@ -181,15 +220,16 @@ func (b *Buffer) expire(bucket *bolt.Bucket, now time.Time) (int, int64, error) 
 			continue
 		}
 		keys = append(keys, copyKey(key))
-		freed += int64(len(value))
+		gone.add(value)
 	}
-	return len(keys), freed, deleteKeys(bucket, keys)
+	return gone, deleteKeys(bucket, keys)
 }
 
 // evict освобождает не меньше need байт, удаляя самые старые записи
 // наименьшего ранга, но не выше maxRank и никогда не critical.
 // Если освободить нужное нельзя, не удаляет ничего и возвращает false.
-func evict(bucket *bolt.Bucket, need int64, maxRank uint8) (int, int64, bool, error) {
+func evict(bucket *bolt.Bucket, need int64, maxRank uint8) (removal, bool, error) {
+	var gone removal
 	var keys [][]byte
 	var freed int64
 	for rank := uint8(0); rank <= maxRank && rank < events.CriticalRank && freed < need; rank++ {
@@ -200,12 +240,13 @@ func evict(bucket *bolt.Bucket, need int64, maxRank uint8) (int, int64, bool, er
 			}
 			keys = append(keys, copyKey(key))
 			freed += int64(len(value))
+			gone.add(value)
 		}
 	}
 	if freed < need {
-		return 0, 0, false, nil
+		return removal{}, false, nil
 	}
-	return len(keys), freed, true, deleteKeys(bucket, keys)
+	return gone, true, deleteKeys(bucket, keys)
 }
 
 // Append кладёт событие в буфер. При нехватке места вытесняет самые старые
@@ -222,17 +263,17 @@ func (b *Buffer) Append(env events.Envelope) error {
 	defer b.mu.Unlock()
 	now := b.opts.Now()
 
-	var removedCount int
-	var removedBytes, size int64
+	var gone removal
+	var size int64
 
 	err = b.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
 
-		count, freed, err := b.expire(bucket, now)
+		expired, err := b.expire(bucket, now)
 		if err != nil {
 			return err
 		}
-		removedCount, removedBytes = count, freed
+		gone = expired
 
 		seq, err := bucket.NextSequence()
 		if err != nil {
@@ -248,16 +289,24 @@ func (b *Buffer) Append(env events.Envelope) error {
 		size = int64(len(value))
 
 		if b.opts.MaxBytes > 0 {
-			if need := b.bytes - removedBytes + size - b.opts.MaxBytes; need > 0 {
-				count, freed, ok, err := evict(bucket, need, rank)
+			if need := b.bytes - gone.total() + size - b.opts.MaxBytes; need > 0 {
+				// Вытеснить можно только записи не выше ранга нового события и
+				// никогда critical. Если их не хватает, обход не нужен вовсе.
+				var evictable int64
+				for r := 0; r <= int(rank) && r < int(events.CriticalRank); r++ {
+					evictable += b.rankBytes[r] - gone.bytes[r]
+				}
+				if evictable < need {
+					return ErrFull
+				}
+				evicted, ok, err := evict(bucket, need, rank)
 				if err != nil {
 					return err
 				}
 				if !ok {
 					return ErrFull
 				}
-				removedCount += count
-				removedBytes += freed
+				gone.merge(evicted)
 			}
 		}
 		return bucket.Put(key, value)
@@ -266,9 +315,11 @@ func (b *Buffer) Append(env events.Envelope) error {
 		return err
 	}
 
-	b.count += 1 - removedCount
-	b.bytes += size - removedBytes
-	b.lost += uint64(removedCount)
+	b.apply(gone)
+	b.count++
+	b.bytes += size
+	b.rankBytes[rank] += size
+	b.lost += uint64(gone.count)
 	return nil
 }
 
@@ -281,7 +332,7 @@ func (b *Buffer) NextBatch(maxEvents, maxBytes int) (Batch, error) {
 
 	var batch Batch
 	var corrupt [][]byte
-	var corruptBytes int64
+	var corruptGone removal
 
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
@@ -293,7 +344,7 @@ func (b *Buffer) NextBatch(maxEvents, maxBytes int) (Batch, error) {
 			line, err := b.open(key, value)
 			if err != nil {
 				corrupt = append(corrupt, copyKey(key))
-				corruptBytes += int64(len(value))
+				corruptGone.add(value)
 				continue
 			}
 			// Первое событие берётся всегда: иначе событие больше предела
@@ -313,9 +364,8 @@ func (b *Buffer) NextBatch(maxEvents, maxBytes int) (Batch, error) {
 
 	if len(corrupt) > 0 {
 		slog.Warn("записи буфера не прошли проверку и удалены", "count", len(corrupt))
-		b.count -= len(corrupt)
-		b.bytes -= corruptBytes
-		b.lost += uint64(len(corrupt))
+		b.apply(corruptGone)
+		b.lost += uint64(corruptGone.count)
 	}
 	return batch, nil
 }
@@ -327,18 +377,16 @@ func (b *Buffer) Ack(batch Batch) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	var removed int
-	var freed int64
+	var gone removal
 	err := b.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(bucketName)
-		removed, freed = 0, 0
+		gone = removal{}
 		for _, key := range batch.keys {
 			value := bucket.Get(key)
 			if value == nil {
 				continue
 			}
-			freed += int64(len(value))
-			removed++
+			gone.add(value)
 			if err := bucket.Delete(key); err != nil {
 				return err
 			}
@@ -348,9 +396,17 @@ func (b *Buffer) Ack(batch Batch) error {
 	if err != nil {
 		return err
 	}
-	b.count -= removed
-	b.bytes -= freed
+	b.apply(gone)
 	return nil
+}
+
+// apply вычитает удалённое из счётчиков. Вызывается под b.mu.
+func (b *Buffer) apply(gone removal) {
+	b.count -= gone.count
+	b.bytes -= gone.total()
+	for i := range b.rankBytes {
+		b.rankBytes[i] -= gone.bytes[i]
+	}
 }
 
 func (b *Buffer) Stats() (int, int64) {

@@ -329,3 +329,27 @@ func TestAckAfterConcurrentEvictionKeepsCountersConsistent(t *testing.T) {
 		t.Fatalf("count=%d bytes=%d, ожидалась ровно одна запись", count, bytesLeft)
 	}
 }
+
+// Потерянное событие низкой критичности не должно вытеснять настоящие события
+// отчётом о потере: иначе поток info заменял бы события medium отчётами
+// «потеряно 1», и гарантия «низкая критичность не вытесняет важную» не работала.
+func TestLossReportDoesNotEvictMoreImportantEvents(t *testing.T) {
+	size := recordSize(t)
+	buf, _ := open(t, func(o *buffer.Options) { o.MaxBytes = 3*size + size/2 })
+	for _, name := range []string{"m1", "m2", "m3"} {
+		mustAppend(t, buf, event(t, name, events.SeverityMedium))
+	}
+
+	queue := events.NewQueue(10)
+	for i := 0; i < 3; i++ {
+		queue.Emit(event(t, "noise", events.SeverityInfo))
+	}
+	queue.Close()
+	queue.Drain(buf.Append, buf.TakeLost)
+
+	batch, _ := buf.NextBatch(10, 1<<20)
+	got := actions(t, batch)
+	if len(got) != 3 || got[0] != "m1" || got[1] != "m2" || got[2] != "m3" {
+		t.Fatalf("осталось %v, ожидалось [m1 m2 m3]", got)
+	}
+}

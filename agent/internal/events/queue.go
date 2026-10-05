@@ -51,7 +51,9 @@ func (q *Queue) Close() {
 // истечение срока); может быть nil.
 //
 // Потери не молчат: после каждого события в приёмник добавляется
-// agent/events_dropped с количеством. Если и он не помещается, остаётся
+// agent/events_dropped с количеством. Отчёт имеет низшую критичность: с более
+// высокой он вытеснял бы из полного буфера настоящие события ради сообщения
+// о том, что потеряно ещё одно. Если и он не помещается, остаётся
 // запись в журнале — повторно потери не пересчитываются, иначе при
 // полном буфере получился бы бесконечный цикл отчётов.
 func (q *Queue) Drain(appendEvent func(Envelope) error, lost func() uint64) {
@@ -73,7 +75,7 @@ func (q *Queue) reportLoss(appendEvent func(Envelope) error, lost func() uint64)
 	if count == 0 {
 		return
 	}
-	report, err := NewEnvelope(ChannelAgent, "events_dropped", SeverityMedium, map[string]any{
+	report, err := NewEnvelope(ChannelAgent, "events_dropped", SeverityInfo, map[string]any{
 		"component": "buffer",
 		"detail":    "события потеряны: очередь или буфер переполнены, либо истёк срок",
 		"count":     count,
