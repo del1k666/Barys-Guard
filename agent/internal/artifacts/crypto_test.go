@@ -122,3 +122,101 @@ func TestWriterNeverHoldsMoreThanOneBlock(t *testing.T) {
 		t.Fatalf("plain = %d, ожидалось %d", writer.plain, 3*blockSize)
 	}
 }
+
+func TestDoubleCloseIsIdempotent(t *testing.T) {
+	data := bytes.Repeat([]byte("abc"), 1000)
+	var out bytes.Buffer
+	writer, err := newEncryptWriter(&out, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.Write(data)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("повторный Close вернул %v", err)
+	}
+	got, err := unseal(testKey, out.Bytes())
+	if err != nil || !bytes.Equal(got, data) {
+		t.Fatalf("данные не восстановились: %v", err)
+	}
+}
+
+func TestWriteAfterCloseFails(t *testing.T) {
+	var out bytes.Buffer
+	writer, err := newEncryptWriter(&out, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer.Write([]byte("hello"))
+	writer.Close()
+	before := append([]byte(nil), out.Bytes()...)
+
+	if _, err := writer.Write([]byte("more")); err == nil {
+		t.Fatal("Write после Close должен вернуть ошибку")
+	}
+	if !bytes.Equal(before, out.Bytes()) {
+		t.Fatal("после Close в приёмник попали новые байты")
+	}
+	got, err := unseal(testKey, out.Bytes())
+	if err != nil || string(got) != "hello" {
+		t.Fatalf("got %q, err %v", got, err)
+	}
+}
+
+// failingSink отказывает на failAt-й записи и считает всё, что к нему обратилось после.
+type failingSink struct {
+	calls, failAt, after int
+}
+
+func (s *failingSink) Write(p []byte) (int, error) {
+	s.calls++
+	if s.calls >= s.failAt {
+		if s.calls > s.failAt {
+			s.after++
+		}
+		return 0, errors.New("диск отказал")
+	}
+	return len(p), nil
+}
+
+func TestFailedFlushIsSticky(t *testing.T) {
+	// Запись 1 — заголовок, 2 — длина первого блока, 3 — шифртекст.
+	sink := &failingSink{failAt: 3}
+	writer, err := newEncryptWriter(sink, testKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := make([]byte, blockSize)
+	writer.Write(chunk) // буфер полон, сброса ещё не было
+	if _, err := writer.Write([]byte{1}); err == nil {
+		t.Fatal("ожидалась ошибка сброса блока")
+	}
+	calls := sink.calls
+	if _, err := writer.Write([]byte{1}); err == nil {
+		t.Fatal("Write после сбоя должен вернуть ошибку")
+	}
+	if err := writer.Close(); err == nil {
+		t.Fatal("Close после сбоя должен вернуть ошибку")
+	}
+	if sink.calls != calls || sink.after != 0 {
+		t.Fatalf("после сбоя в приёмник писали ещё: %d -> %d", calls, sink.calls)
+	}
+}
+
+func TestBadMasterKeyLengthIsRejected(t *testing.T) {
+	raw := seal(t, testKey, []byte("x"))
+	for _, n := range []int{0, 31, 33} {
+		key := make([]byte, n)
+		if _, err := newEncryptWriter(io.Discard, key); err == nil {
+			t.Fatalf("newEncryptWriter принял ключ длиной %d", n)
+		}
+		if _, err := newDecryptReader(bytes.NewReader(raw), key); err == nil {
+			t.Fatalf("newDecryptReader принял ключ длиной %d", n)
+		}
+	}
+	if _, err := newEncryptWriter(io.Discard, nil); err == nil {
+		t.Fatal("nil-ключ принят")
+	}
+}

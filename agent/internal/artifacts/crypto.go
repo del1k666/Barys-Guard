@@ -19,9 +19,17 @@ const (
 	blockSize = 1 << 20
 	// Запас на тег GCM при проверке длины блока в чужом файле.
 	tagSize = 16
+	// masterKeySize — обязательная длина мастер-ключа: пустой или короткий ключ
+	// молча дал бы файлы, которые может расшифровать кто угодно.
+	masterKeySize = 32
 )
 
 var errCorrupt = errors.New("копия повреждена или ключ не подходит")
+
+var (
+	errBadKey = errors.New("мастер-ключ должен быть длиной 32 байта")
+	errClosed = errors.New("запись в уже закрытый шифрующий поток")
+)
 
 // deriveKey даёт каждой копии свой ключ: счётчик блока как nonce безопасен
 // только пока ключ не повторяется между файлами.
@@ -33,6 +41,9 @@ func deriveKey(master, salt []byte) []byte {
 }
 
 func newAEAD(master, salt []byte) (cipher.AEAD, error) {
+	if len(master) != masterKeySize {
+		return nil, errBadKey
+	}
 	block, err := aes.NewCipher(deriveKey(master, salt))
 	if err != nil {
 		return nil, err
@@ -64,6 +75,10 @@ type encryptWriter struct {
 	index uint64
 	// plain — сколько байт открытого текста принято.
 	plain int64
+	// err — первая ошибка записи: после неё ничего больше не шифруется, иначе
+	// тот же индекс блока был бы использован повторно с другими данными.
+	err    error
+	closed bool
 }
 
 func newEncryptWriter(dst io.Writer, master []byte) (*encryptWriter, error) {
@@ -82,22 +97,37 @@ func newEncryptWriter(dst io.Writer, master []byte) (*encryptWriter, error) {
 }
 
 func (w *encryptWriter) Write(p []byte) (int, error) {
-	total := len(p)
+	if w.err != nil {
+		return 0, w.err
+	}
+	if w.closed {
+		return 0, errClosed
+	}
+	consumed := 0
 	for len(p) > 0 {
 		if len(w.buf) == blockSize {
 			if err := w.flush(false); err != nil {
-				return 0, err
+				return consumed, err
 			}
 		}
 		n := min(len(p), blockSize-len(w.buf))
 		w.buf = append(w.buf, p[:n]...)
 		p = p[n:]
+		consumed += n
+		w.plain += int64(n)
 	}
-	w.plain += int64(total)
-	return total, nil
+	return consumed, nil
 }
 
 func (w *encryptWriter) flush(last bool) error {
+	if err := w.seal(last); err != nil {
+		w.err = err
+		return err
+	}
+	return nil
+}
+
+func (w *encryptWriter) seal(last bool) error {
 	sealed := w.aead.Seal(nil, nonce(w.index), w.buf, aad(w.index, last))
 	var length [4]byte
 	binary.BigEndian.PutUint32(length[:], uint32(len(sealed)))
@@ -114,7 +144,16 @@ func (w *encryptWriter) flush(last bool) error {
 
 // Close записывает последний блок. Он может быть пустым: пустой файл — это
 // один пустой блок, а не отсутствие блоков.
-func (w *encryptWriter) Close() error { return w.flush(true) }
+func (w *encryptWriter) Close() error {
+	if w.err != nil {
+		return w.err
+	}
+	if w.closed {
+		return nil
+	}
+	w.closed = true
+	return w.flush(true)
+}
 
 type decryptReader struct {
 	src   *bufio.Reader
