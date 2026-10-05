@@ -5,7 +5,7 @@ import uuid
 
 import pytest
 
-from barysguard.services.events import BatchTooLarge, BatchUnreadable, parse_batch
+from barysguard.services.events import BatchTooLargeError, BatchUnreadableError, parse_batch
 
 
 def _event(**overrides) -> dict:
@@ -86,12 +86,12 @@ def test_agent_id_in_body_is_ignored() -> None:
 
 
 def test_too_many_lines_is_refused() -> None:
-    with pytest.raises(BatchTooLarge):
+    with pytest.raises(BatchTooLargeError):
         parse_batch(_body(*[json.dumps(_event()) for _ in range(3)]), max_lines=2)
 
 
 def test_undecodable_or_empty_body_is_unreadable() -> None:
-    with pytest.raises(BatchUnreadable):
+    with pytest.raises(BatchUnreadableError):
         parse_batch(b"\xff\xfe\x00", max_lines=10)
-    with pytest.raises(BatchUnreadable):
+    with pytest.raises(BatchUnreadableError):
         parse_batch(b"\n  \n", max_lines=10)

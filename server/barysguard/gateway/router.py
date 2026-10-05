@@ -23,8 +23,8 @@ from barysguard.gateway.schemas import (
     HeartbeatRequest,
     HeartbeatResponse,
     QueuedCommand,
-    RenewRequest,
     RejectedLine,
+    RenewRequest,
     RenewResponse,
 )
 from barysguard.pki.ca import CertificateAuthority
@@ -39,7 +39,12 @@ from barysguard.services.commands import (
 )
 from barysguard.services.config import effective_config_for_agent
 from barysguard.services.enrollment import consume_enrollment_token
-from barysguard.services.events import BatchTooLarge, BatchUnreadable, parse_batch, store_events
+from barysguard.services.events import (
+    BatchTooLargeError,
+    BatchUnreadableError,
+    parse_batch,
+    store_events,
+)
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway"])
 
@@ -293,9 +298,9 @@ async def ingest_events(
 
     try:
         parsed = parse_batch(b"".join(chunks), max_events)
-    except BatchTooLarge as exc:
+    except BatchTooLargeError as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "batch too large") from exc
-    except BatchUnreadable as exc:
+    except BatchUnreadableError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unreadable batch") from exc
 
     inserted = await store_events(

@@ -18,11 +18,11 @@ from barysguard.gateway.event_schemas import MAX_EVENT_BYTES, SCHEMA_VERSION, Ev
 INSERT_CHUNK = 1000
 
 
-class BatchUnreadable(Exception):
+class BatchUnreadableError(Exception):
     """Тело не разбирается как NDJSON: не UTF-8 или нет ни одной строки."""
 
 
-class BatchTooLarge(Exception):
+class BatchTooLargeError(Exception):
     """В пакете больше событий, чем разрешает конфигурация агента."""
 
 
@@ -65,7 +65,7 @@ def parse_batch(body: bytes, max_lines: int) -> ParsedBatch:
     try:
         text = body.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise BatchUnreadable("body is not UTF-8") from exc
+        raise BatchUnreadableError("body is not UTF-8") from exc
 
     numbered = [
         (number, line.strip())
@@ -73,9 +73,9 @@ def parse_batch(body: bytes, max_lines: int) -> ParsedBatch:
         if line.strip()
     ]
     if not numbered:
-        raise BatchUnreadable("empty batch")
+        raise BatchUnreadableError("empty batch")
     if len(numbered) > max_lines:
-        raise BatchTooLarge(f"{len(numbered)} events, limit {max_lines}")
+        raise BatchTooLargeError(f"{len(numbered)} events, limit {max_lines}")
 
     parsed = ParsedBatch()
     for number, raw in numbered:
