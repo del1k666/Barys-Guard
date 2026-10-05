@@ -23,6 +23,11 @@ const (
 	maxChunk     = 1 << 20
 	// Нижняя граница чанка при низкой скорости: меньше — слишком много запросов.
 	minChunkBytes = 64 << 10
+	// Минимальный промежуток между запросами воркера: nginx ограничивает
+	// частоту запросов агента общим лимитом с heartbeat и событиями.
+	minRequestGap = 200 * time.Millisecond
+	// Минимальный промежуток между проходами, даже если копии идут потоком.
+	minPassGap = time.Second
 	// Сколько раз за одну загрузку принять смещение сервера, прежде чем
 	// отложить файл: сервер, отвечающий 409 вечно, не должен держать воркер.
 	maxRepositions = 5
@@ -54,6 +59,10 @@ type Worker struct {
 
 	retry  map[string]*retryState
 	resets map[string]int
+	// pauseUntil — общая пауза после временной ошибки: пока сервер или сеть
+	// лежат, проходы не шлют запросов вовсе, а не по одному на каждый файл.
+	pauseUntil  time.Time
+	lastRequest time.Time
 }
 
 func NewWorker(store *Store, api Transport) *Worker {
@@ -96,17 +105,28 @@ func (w *Worker) Run(ctx context.Context, emit func(events.Envelope)) {
 	for {
 		w.Pass(ctx)
 		w.reportDropped(emit)
+		finished := w.now()
 		select {
 		case <-ctx.Done():
 			return
 		case <-w.store.Staged():
 		case <-ticker.C:
 		}
+		// Поток новых копий не должен становиться потоком перечислений
+		// каталога: сигналы за время паузы сливаются, Pass всё равно
+		// перечитывает каталог целиком.
+		if gap := minPassGap - w.now().Sub(finished); gap > 0 {
+			w.sleep(ctx, gap)
+		}
 	}
 }
 
-// Pass загружает по одной все копии, которым пришёл срок.
+// Pass загружает по одной все копии, которым пришёл срок. Временная ошибка
+// завершает проход и ставит паузу на весь воркер.
 func (w *Worker) Pass(ctx context.Context) {
+	if w.now().Before(w.pauseUntil) {
+		return
+	}
 	entries, err := w.store.List()
 	if err != nil {
 		slog.Warn("каталог копий не прочитан", "error", err)
@@ -120,7 +140,9 @@ func (w *Worker) Pass(ctx context.Context) {
 		if state := w.retry[entry.SHA256]; state != nil && w.now().Before(state.notBefore) {
 			continue
 		}
-		w.settle(ctx, entry, w.upload(ctx, entry))
+		if w.settle(ctx, entry, w.upload(ctx, entry)) {
+			return
+		}
 	}
 }
 
@@ -143,7 +165,19 @@ func (w *Worker) prune(entries []Entry) {
 	}
 }
 
+// spaceRequest выдерживает minRequestGap с прошлого запроса воркера: ответы
+// «exists» и мелкие файлы иначе дали бы сотни запросов в секунду.
+func (w *Worker) spaceRequest(ctx context.Context) {
+	if !w.lastRequest.IsZero() {
+		if remaining := minRequestGap - w.now().Sub(w.lastRequest); remaining > 0 {
+			w.sleep(ctx, remaining)
+		}
+	}
+	w.lastRequest = w.now()
+}
+
 func (w *Worker) upload(ctx context.Context, entry Entry) error {
+	w.spaceRequest(ctx)
 	open, err := w.api.OpenArtifact(ctx, entry.SHA256, entry.Size)
 	if err != nil {
 		return err
@@ -174,6 +208,7 @@ func (w *Worker) upload(ctx context.Context, entry Entry) error {
 			return errIncomplete
 		}
 
+		w.spaceRequest(ctx)
 		started := w.now()
 		resp, err := w.api.UploadChunk(ctx, open.UploadID, offset, data)
 		if received, mismatch := transport.OffsetMismatch(err); mismatch {
@@ -233,19 +268,20 @@ func (w *Worker) pace(ctx context.Context, sent int, started time.Time) {
 }
 
 // settle разбирает итог попытки: успех, повтор позже либо отказ навсегда.
-func (w *Worker) settle(ctx context.Context, entry Entry, err error) {
+// true — ошибка временная: выставлена общая пауза, проход надо завершить.
+func (w *Worker) settle(ctx context.Context, entry Entry, err error) bool {
 	if err == nil {
 		delete(w.retry, entry.SHA256)
 		delete(w.resets, entry.SHA256)
-		return
+		return false
 	}
 	if ctx.Err() != nil {
-		return
+		return false
 	}
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errCorrupt) {
 		slog.Warn("копия файла недоступна, загрузка отменена", "sha256", entry.SHA256, "error", err)
 		w.drop(entry)
-		return
+		return false
 	}
 
 	var status *transport.StatusError
@@ -257,7 +293,7 @@ func (w *Worker) settle(ctx context.Context, entry Entry, err error) {
 			if w.resets[entry.SHA256] > 1 {
 				slog.Warn("сервер не принял содержимое дважды", "sha256", entry.SHA256)
 				w.drop(entry)
-				return
+				return false
 			}
 			w.backoff(entry, 0)
 		case status.Code == http.StatusNotFound:
@@ -268,12 +304,14 @@ func (w *Worker) settle(ctx context.Context, entry Entry, err error) {
 		default:
 			slog.Warn("сервер отверг файл", "sha256", entry.SHA256, "status", status.Code)
 			w.drop(entry)
+			return false
 		}
-		return
+		return true
 	}
 
 	slog.Warn("загрузка файла не удалась, повтор позже", "sha256", entry.SHA256, "error", err)
 	w.backoff(entry, 0)
+	return true
 }
 
 func (w *Worker) backoff(entry Entry, retryAfter time.Duration) {
@@ -288,6 +326,8 @@ func (w *Worker) backoff(entry Entry, retryAfter time.Duration) {
 		delay = retryAfter
 	}
 	state.notBefore = w.now().Add(delay)
+	// Пауза общая: следующий файл упёрся бы в ту же недоступность.
+	w.pauseUntil = state.notBefore
 }
 
 func (w *Worker) drop(entry Entry) {

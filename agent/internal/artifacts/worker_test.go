@@ -30,10 +30,21 @@ type fakeServer struct {
 	opens, chunks int
 	offsets       []int64
 	maxChunk      int
+
+	// clock задан — время каждого запроса пишется в times.
+	clock func() time.Time
+	times []time.Time
+}
+
+func (f *fakeServer) record() {
+	if f.clock != nil {
+		f.times = append(f.times, f.clock())
+	}
 }
 
 func (f *fakeServer) OpenArtifact(_ context.Context, _ string, size int64) (transport.ArtifactOpenResponse, error) {
 	f.opens++
+	f.record()
 	if f.failOpen != nil {
 		return transport.ArtifactOpenResponse{}, f.failOpen
 	}
@@ -52,6 +63,7 @@ func (f *fakeServer) OpenArtifact(_ context.Context, _ string, size int64) (tran
 
 func (f *fakeServer) UploadChunk(_ context.Context, _ string, offset int64, data []byte) (transport.ArtifactChunkResponse, error) {
 	f.chunks++
+	f.record()
 	f.offsets = append(f.offsets, offset)
 	f.maxChunk = max(f.maxChunk, len(data))
 	if f.failChunk != nil {
@@ -89,7 +101,11 @@ func newWorkerHarness(t *testing.T) *workerHarness {
 	api := &fakeServer{chunkSize: 1 << 20}
 	h := &workerHarness{store: store, clock: clock, api: api, worker: NewWorker(store, api)}
 	h.worker.now = clock.Now
-	h.worker.sleep = func(_ context.Context, d time.Duration) { h.slept = append(h.slept, d) }
+	// Сон двигает поддельные часы, как настоящий сон двигал бы настоящие.
+	h.worker.sleep = func(_ context.Context, d time.Duration) {
+		h.slept = append(h.slept, d)
+		clock.now = clock.now.Add(d)
+	}
 	// Скорость не мешает тестам, кроме теста пейсинга.
 	cfg := DefaultConfig()
 	cfg.UploadBytesPerSecond = 1 << 40
@@ -287,6 +303,8 @@ func TestUploadSpeedIsPaced(t *testing.T) {
 	for _, d := range h.slept {
 		total += d
 	}
+	// Промежуток между открытием сессии и первым чанком — не пейсинг.
+	total -= minRequestGap
 	if total < 900*time.Millisecond || total > 1100*time.Millisecond {
 		t.Fatalf("пауза %v: 1 МиБ при 1 МиБ/с должен занимать около секунды", total)
 	}
@@ -382,6 +400,7 @@ func TestBackoffStateIsPrunedWhenTheCopyVanishes(t *testing.T) {
 	}
 	entries, _ := h.store.List()
 	os.Remove(filepath.Join(h.store.dir, entries[0].name))
+	h.clock.now = h.clock.now.Add(time.Hour) // во время общей паузы проход не идёт
 
 	h.worker.Pass(context.Background())
 
@@ -398,7 +417,8 @@ func TestStaleHashRetryCounterDoesNotHitARestagedCopy(t *testing.T) {
 	h.worker.Pass(context.Background())
 	entries, _ := h.store.List()
 	os.Remove(filepath.Join(h.store.dir, entries[0].name))
-	h.worker.Pass(context.Background()) // прореживание
+	h.clock.now = h.clock.now.Add(time.Hour) // во время общей паузы проход не идёт
+	h.worker.Pass(context.Background())      // прореживание
 
 	stage(t, h.store, data)
 	h.clock.now = h.clock.now.Add(time.Hour)
@@ -474,5 +494,85 @@ func TestChunkIsCappedByTheConfiguredSpeed(t *testing.T) {
 				t.Fatalf("чанк %d байт, при низкой скорости ожидалось %d", h.api.maxChunk, minChunkBytes)
 			}
 		})
+	}
+}
+
+// Сервер лежит: проход делает один запрос и заканчивается, а не перебирает
+// все копии, и до конца общей паузы новых запросов нет.
+func TestTransientErrorPausesTheWholeWorker(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.api.failOpen = &transport.StatusError{Code: 503}
+	for i := 0; i < 5; i++ {
+		stage(t, h.store, randomBytes(100+i))
+	}
+
+	h.worker.Pass(context.Background())
+	if h.api.opens != 1 {
+		t.Fatalf("за проход %d запросов, ожидался 1", h.api.opens)
+	}
+	h.worker.Pass(context.Background())
+	if h.api.opens != 1 {
+		t.Fatalf("во время паузы %d запросов, ожидался 1", h.api.opens)
+	}
+
+	h.clock.now = h.clock.now.Add(backoffBase + time.Second)
+	h.worker.Pass(context.Background())
+	if h.api.opens != 2 {
+		t.Fatalf("после паузы всего %d запросов, ожидалось 2", h.api.opens)
+	}
+	if h.pending(t) != 5 {
+		t.Fatal("временная ошибка не должна снимать копии")
+	}
+}
+
+func TestRequestsAreSpacedByTheMinimumGap(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.api.clock = h.clock.Now
+	for i := 0; i < 3; i++ {
+		stage(t, h.store, randomBytes(100+i))
+	}
+
+	h.worker.Pass(context.Background())
+
+	if len(h.api.times) != 6 || h.pending(t) != 0 {
+		t.Fatalf("запросов %d, осталось копий %d", len(h.api.times), h.pending(t))
+	}
+	for i := 1; i < len(h.api.times); i++ {
+		if gap := h.api.times[i].Sub(h.api.times[i-1]); gap < minRequestGap {
+			t.Fatalf("между запросами %d и %d прошло %v, минимум %v", i-1, i, gap, minRequestGap)
+		}
+	}
+}
+
+// Отказ сервера по конкретному файлу не повод останавливать проход.
+func TestPermanentDropDoesNotStopThePass(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.api.failChunk = func(int64) error { return &transport.StatusError{Code: 413} }
+	stage(t, h.store, randomBytes(100))
+	stage(t, h.store, randomBytes(200))
+
+	h.worker.Pass(context.Background())
+
+	if h.api.opens != 2 || h.pending(t) != 0 || h.store.TakeDropped() != 2 {
+		t.Fatalf("обращений %d, осталось %d: второй файл не обработан в том же проходе",
+			h.api.opens, h.pending(t))
+	}
+}
+
+// Поток новых копий не должен превращаться в поток проходов.
+func TestRunKeepsAGapBetweenPasses(t *testing.T) {
+	h := newWorkerHarness(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	h.worker.sleep = func(_ context.Context, d time.Duration) {
+		h.slept = append(h.slept, d)
+		cancel()
+	}
+	h.store.staged <- struct{}{}
+
+	h.worker.Run(ctx, nil)
+
+	if len(h.slept) != 1 || h.slept[0] != minPassGap {
+		t.Fatalf("паузы %v, ожидалась одна в %v перед новым проходом", h.slept, minPassGap)
 	}
 }
