@@ -19,10 +19,12 @@ from barysguard.gateway.schemas import (
     CommandResultRequest,
     EnrollRequest,
     EnrollResponse,
+    EventsResult,
     HeartbeatRequest,
     HeartbeatResponse,
     QueuedCommand,
     RenewRequest,
+    RejectedLine,
     RenewResponse,
 )
 from barysguard.pki.ca import CertificateAuthority
@@ -37,6 +39,7 @@ from barysguard.services.commands import (
 )
 from barysguard.services.config import effective_config_for_agent
 from barysguard.services.enrollment import consume_enrollment_token
+from barysguard.services.events import BatchTooLarge, BatchUnreadable, parse_batch, store_events
 
 router = APIRouter(prefix="/gateway/v1", tags=["gateway"])
 
@@ -248,3 +251,59 @@ async def submit_command_result(
     # Повтор после обрыва связи — не ошибка, но и не новое принятие.
     response.status_code = status.HTTP_202_ACCEPTED if accepted else status.HTTP_200_OK
     return {"status": command.status.value}
+
+
+@router.post(
+    "/events",
+    response_model=EventsResult,
+    status_code=status.HTTP_202_ACCEPTED,
+    # Тело — NDJSON, FastAPI его не описывает: контракт задаётся вручную.
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/x-ndjson": {"schema": {"$ref": "#/components/schemas/EventEnvelope"}}
+            },
+        }
+    },
+)
+async def ingest_events(
+    request: Request,
+    agent: Agent = Depends(current_agent),
+    session: AsyncSession = Depends(get_session),
+) -> EventsResult:
+    """Пакет событий в NDJSON, одна строка — одно событие. Идемпотентно."""
+    document, _ = await effective_config_for_agent(session, agent)
+    max_events = document["transport"]["event_batch_max"]
+    max_bytes = document["transport"]["event_batch_max_bytes"]
+
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > max_bytes:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "batch too large")
+
+    # Тело читается потоком и обрывается на пределе: заголовок
+    # Content-Length можно не прислать вовсе.
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > max_bytes:
+            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "batch too large")
+        chunks.append(chunk)
+
+    try:
+        parsed = parse_batch(b"".join(chunks), max_events)
+    except BatchTooLarge as exc:
+        raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "batch too large") from exc
+    except BatchUnreadable as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "unreadable batch") from exc
+
+    inserted = await store_events(
+        session, agent.id, [envelope for _, envelope in parsed.events], datetime.now(UTC)
+    )
+
+    return EventsResult(
+        accepted=inserted,
+        duplicates=len(parsed.events) - inserted,
+        rejected=[RejectedLine(line=r.line, reason=r.reason) for r in parsed.rejected],
+    )

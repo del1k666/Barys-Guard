@@ -68,3 +68,14 @@ class HeartbeatResponse(BaseModel):
 class CommandResultRequest(BaseModel):
     status: Literal["done", "failed"]
     result: dict[str, Any] = Field(default_factory=dict)
+
+
+class RejectedLine(BaseModel):
+    line: int
+    reason: str
+
+
+class EventsResult(BaseModel):
+    accepted: int
+    duplicates: int
+    rejected: list[RejectedLine]
