@@ -3,7 +3,7 @@ import json
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +38,51 @@ class LoggingConfig(BaseModel):
     level: Literal["debug", "info", "warn", "error"] = "info"
 
 
+class UsbCollectorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    poll_seconds: int = Field(default=2, ge=1, le=60)
+
+
+def _default_watch_paths() -> list[str]:
+    return [r"%USERS%\Documents", r"%USERS%\Desktop", r"%USERS%\Downloads"]
+
+
+def _default_watch_exclude() -> list[str]:
+    return [r"*\~$*", "*.tmp", "*.crdownload", r"*\AppData\*"]
+
+
+class FileWatchConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    # %USERS% агент раскрывает в каталог каждого профиля пользователя.
+    paths: list[str] = Field(default_factory=_default_watch_paths, max_length=64)
+    exclude: list[str] = Field(default_factory=_default_watch_exclude, max_length=64)
+    stable_ms: int = Field(default=1500, ge=200, le=60_000)
+    max_wait_ms: int = Field(default=30_000, ge=1_000, le=300_000)
+    max_hash_bytes: int = Field(
+        default=256 * 1024 * 1024, ge=1024 * 1024, le=4 * 1024 * 1024 * 1024
+    )
+    max_events_per_second: int = Field(default=200, ge=1, le=10_000)
+
+    @field_validator("paths", "exclude")
+    @classmethod
+    def _non_empty_short_strings(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if not value or len(value) > 512:
+                raise ValueError("each entry must be 1..512 characters")
+        return values
+
+
+class CollectorsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    usb: UsbCollectorConfig = UsbCollectorConfig()
+    file_watch: FileWatchConfig = FileWatchConfig()
+
+
 class AgentConfigDocument(BaseModel):
     """Полная форма конфигурации агента.
 
@@ -51,6 +96,7 @@ class AgentConfigDocument(BaseModel):
     transport: TransportConfig = TransportConfig()
     buffer: BufferConfig = BufferConfig()
     logging: LoggingConfig = LoggingConfig()
+    collectors: CollectorsConfig = CollectorsConfig()
     # Наполняется подпроектом 3. Зарезервирован пустым, чтобы добавление
     # политик не меняло версию контракта.
     policies: dict[str, Any] = Field(default_factory=dict)

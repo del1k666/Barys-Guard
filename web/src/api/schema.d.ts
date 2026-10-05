@@ -173,6 +173,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gateway/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Events
+         * @description Пакет событий в NDJSON, одна строка — одно событие. Идемпотентно.
+         */
+        post: operations["ingest_events_gateway_v1_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -666,6 +686,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description События от новых к старым. Оператор видит только свою область.
+         */
+        get: operations["list_events_api_v1_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -702,6 +742,33 @@ export interface components {
              *     }
              */
             logging: components["schemas"]["LoggingConfig"];
+            /**
+             * @default {
+             *       "usb": {
+             *         "enabled": true,
+             *         "poll_seconds": 2
+             *       },
+             *       "file_watch": {
+             *         "enabled": true,
+             *         "exclude": [
+             *           "*\\~$*",
+             *           "*.tmp",
+             *           "*.crdownload",
+             *           "*\\AppData\\*"
+             *         ],
+             *         "max_events_per_second": 200,
+             *         "max_hash_bytes": 268435456,
+             *         "max_wait_ms": 30000,
+             *         "paths": [
+             *           "%USERS%\\Documents",
+             *           "%USERS%\\Desktop",
+             *           "%USERS%\\Downloads"
+             *         ],
+             *         "stable_ms": 1500
+             *       }
+             *     }
+             */
+            collectors: components["schemas"]["CollectorsConfig"];
             /** Policies */
             policies?: {
                 [key: string]: unknown;
@@ -907,6 +974,37 @@ export interface components {
             current_password: string;
             /** New Password */
             new_password: string;
+        };
+        /** CollectorsConfig */
+        CollectorsConfig: {
+            /**
+             * @default {
+             *       "enabled": true,
+             *       "poll_seconds": 2
+             *     }
+             */
+            usb: components["schemas"]["UsbCollectorConfig"];
+            /**
+             * @default {
+             *       "enabled": true,
+             *       "paths": [
+             *         "%USERS%\\Documents",
+             *         "%USERS%\\Desktop",
+             *         "%USERS%\\Downloads"
+             *       ],
+             *       "exclude": [
+             *         "*\\~$*",
+             *         "*.tmp",
+             *         "*.crdownload",
+             *         "*\\AppData\\*"
+             *       ],
+             *       "stable_ms": 1500,
+             *       "max_wait_ms": 30000,
+             *       "max_hash_bytes": 268435456,
+             *       "max_events_per_second": 200
+             *     }
+             */
+            file_watch: components["schemas"]["FileWatchConfig"];
         };
         /** CommandCounts */
         CommandCounts: {
@@ -1127,6 +1225,103 @@ export interface components {
             /** State */
             state: string;
         };
+        /** EventPage */
+        EventPage: {
+            /** Items */
+            items: components["schemas"]["EventSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** EventSummary */
+        EventSummary: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Hostname */
+            hostname: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Received At
+             * Format: date-time
+             */
+            received_at: string;
+            /** Channel */
+            channel: string;
+            /** Action */
+            action: string;
+            /** Severity */
+            severity: string;
+            /** Actor */
+            actor: {
+                [key: string]: unknown;
+            };
+            /** Process */
+            process: {
+                [key: string]: unknown;
+            };
+            /** Subject */
+            subject: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: unknown;
+            };
+            /** Artifact Sha256 */
+            artifact_sha256: string | null;
+        };
+        /** EventsResult */
+        EventsResult: {
+            /** Accepted */
+            accepted: number;
+            /** Duplicates */
+            duplicates: number;
+            /** Rejected */
+            rejected: components["schemas"]["RejectedLine"][];
+        };
+        /** FileWatchConfig */
+        FileWatchConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Paths */
+            paths?: string[];
+            /** Exclude */
+            exclude?: string[];
+            /**
+             * Stable Ms
+             * @default 1500
+             */
+            stable_ms: number;
+            /**
+             * Max Wait Ms
+             * @default 30000
+             */
+            max_wait_ms: number;
+            /**
+             * Max Hash Bytes
+             * @default 268435456
+             */
+            max_hash_bytes: number;
+            /**
+             * Max Events Per Second
+             * @default 200
+             */
+            max_events_per_second: number;
+        };
         /** FleetCommand */
         FleetCommand: {
             /**
@@ -1290,6 +1485,8 @@ export interface components {
             /** Tokens Active */
             tokens_active: number;
             commands: components["schemas"]["CommandCounts"];
+            /** Events 24H */
+            events_24h: number;
             /** Agent Versions */
             agent_versions: components["schemas"]["VersionCount"][];
             /** Operating Systems */
@@ -1313,6 +1510,13 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /** RejectedLine */
+        RejectedLine: {
+            /** Line */
+            line: number;
+            /** Reason */
+            reason: string;
         };
         /** RenewRequest */
         RenewRequest: {
@@ -1434,6 +1638,19 @@ export interface components {
             /** Is Active */
             is_active?: boolean | null;
         };
+        /** UsbCollectorConfig */
+        UsbCollectorConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Poll Seconds
+             * @default 2
+             */
+            poll_seconds: number;
+        };
         /** UserSummary */
         UserSummary: {
             /**
@@ -1484,6 +1701,74 @@ export interface components {
             value: string;
             /** Count */
             count: number;
+        };
+        /**
+         * Channel
+         * @enum {string}
+         */
+        Channel: "file" | "usb" | "clipboard" | "network" | "print" | "process" | "agent";
+        /** EventArtifact */
+        EventArtifact: {
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Uploaded
+             * @default false
+             */
+            uploaded: boolean;
+        };
+        /**
+         * Severity
+         * @enum {string}
+         */
+        Severity: "info" | "low" | "medium" | "high" | "critical";
+        /**
+         * EventEnvelope
+         * @description Конверт события, раздел 9 основной спеки.
+         *
+         *     Поля, которых здесь нет, игнорируются (extra="ignore"). Это сознательно
+         *     касается agent_id: личность агента определяет сертификат, а присланное
+         *     в теле значение позволило бы скомпрометированному агенту писать события
+         *     от чужого имени.
+         */
+        EventEnvelope: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /** Schema Version */
+            schema_version: number;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            channel: components["schemas"]["Channel"];
+            /** Action */
+            action: string;
+            /** @default info */
+            severity_hint: components["schemas"]["Severity"];
+            /** Actor */
+            actor?: {
+                [key: string]: unknown;
+            };
+            /** Process */
+            process?: {
+                [key: string]: unknown;
+            };
+            /** Subject */
+            subject?: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels?: {
+                [key: string]: unknown;
+            };
+            /** @default null */
+            artifact: components["schemas"]["EventArtifact"] | null;
         };
     };
     responses: never;
@@ -1730,6 +2015,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_events_gateway_v1_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-ndjson": components["schemas"]["EventEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsResult"];
                 };
             };
         };
@@ -2772,6 +3081,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_api_v1_events_get: {
+        parameters: {
+            query?: {
+                agent_id?: string | null;
+                channel?: string | null;
+                action?: string | null;
+                severity?: string | null;
+                since?: string | null;
+                until?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPage"];
                 };
             };
             /** @description Validation Error */

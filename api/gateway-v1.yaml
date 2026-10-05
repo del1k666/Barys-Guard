@@ -1310,6 +1310,27 @@ components:
           $ref: '#/components/schemas/LoggingConfig'
           default:
             level: info
+        collectors:
+          $ref: '#/components/schemas/CollectorsConfig'
+          default:
+            usb:
+              enabled: true
+              poll_seconds: 2
+            file_watch:
+              enabled: true
+              exclude:
+              - '*\~$*'
+              - '*.tmp'
+              - '*.crdownload'
+              - '*\AppData\*'
+              max_events_per_second: 200
+              max_hash_bytes: 268435456
+              max_wait_ms: 30000
+              paths:
+              - '%USERS%\Documents'
+              - '%USERS%\Desktop'
+              - '%USERS%\Downloads'
+              stable_ms: 1500
         policies:
           additionalProperties: true
           type: object
@@ -1697,6 +1718,33 @@ components:
       - current_password
       - new_password
       title: ChangePasswordRequest
+    CollectorsConfig:
+      properties:
+        usb:
+          $ref: '#/components/schemas/UsbCollectorConfig'
+          default:
+            enabled: true
+            poll_seconds: 2
+        file_watch:
+          $ref: '#/components/schemas/FileWatchConfig'
+          default:
+            enabled: true
+            paths:
+            - '%USERS%\Documents'
+            - '%USERS%\Desktop'
+            - '%USERS%\Downloads'
+            exclude:
+            - '*\~$*'
+            - '*.tmp'
+            - '*.crdownload'
+            - '*\AppData\*'
+            stable_ms: 1500
+            max_wait_ms: 30000
+            max_hash_bytes: 268435456
+            max_events_per_second: 200
+      additionalProperties: false
+      type: object
+      title: CollectorsConfig
     CommandCounts:
       properties:
         queued:
@@ -2185,6 +2233,51 @@ components:
       - duplicates
       - rejected
       title: EventsResult
+    FileWatchConfig:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        paths:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Paths
+        exclude:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Exclude
+        stable_ms:
+          type: integer
+          maximum: 60000.0
+          minimum: 200.0
+          title: Stable Ms
+          default: 1500
+        max_wait_ms:
+          type: integer
+          maximum: 300000.0
+          minimum: 1000.0
+          title: Max Wait Ms
+          default: 30000
+        max_hash_bytes:
+          type: integer
+          maximum: 4294967296.0
+          minimum: 1048576.0
+          title: Max Hash Bytes
+          default: 268435456
+        max_events_per_second:
+          type: integer
+          maximum: 10000.0
+          minimum: 1.0
+          title: Max Events Per Second
+          default: 200
+      additionalProperties: false
+      type: object
+      title: FileWatchConfig
     FleetCommand:
       properties:
         id:
@@ -2724,6 +2817,21 @@ components:
           title: Is Active
       type: object
       title: UpdateUserRequest
+    UsbCollectorConfig:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        poll_seconds:
+          type: integer
+          maximum: 60.0
+          minimum: 1.0
+          title: Poll Seconds
+          default: 2
+      additionalProperties: false
+      type: object
+      title: UsbCollectorConfig
     UserSummary:
       properties:
         id:

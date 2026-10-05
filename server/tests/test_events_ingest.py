@@ -181,3 +181,29 @@ async def test_unstorable_event_does_not_fail_the_batch(app_client, session) -> 
     assert response.status_code == 202, response.text
     assert response.json()["accepted"] == 1
     assert [r["reason"] for r in response.json()["rejected"]] == ["invalid_event"] * 2
+
+
+async def test_file_and_usb_events_are_validated_end_to_end(app_client, session) -> None:
+    agent = await enroll_agent(app_client, session, "ingest-channels")
+    volume = {"type": "removable", "serial": "0781-5583", "label": "K", "fs": "NTFS"}
+
+    response = await _post(
+        app_client,
+        agent,
+        _event(
+            channel="file",
+            action="copy",
+            subject={"dst_path": "E:\a.docx", "src_path": "C:\a.docx", "volume": volume},
+            artifact={"sha256": "a" * 64, "size": 5, "uploaded": False},
+        ),
+        _event(
+            channel="usb",
+            action="mount",
+            subject={"drive_letter": "E:", "volume": volume, "device": {"bus": "usb"}},
+        ),
+        _event(channel="file", action="create", subject={"dst_path": "E:\b"}),
+    )
+
+    assert response.status_code == 202, response.text
+    assert response.json()["accepted"] == 2
+    assert [(r["line"], r["reason"]) for r in response.json()["rejected"]] == [(3, "invalid_event")]

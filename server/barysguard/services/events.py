@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.db.models.event import Event
 from barysguard.gateway.event_schemas import MAX_EVENT_BYTES, SCHEMA_VERSION, EventEnvelope
+from barysguard.services.event_subjects import subject_is_valid
 
 # Параметров привязки у asyncpg не больше 32767: пакет в 10000 событий по 13
 # колонок в один INSERT не поместится, поэтому вставка идёт порциями.
@@ -85,6 +86,8 @@ def _parse_line(raw: str) -> tuple[EventEnvelope | None, str | None]:
         # Крайние даты проходят валидацию, но не переводятся в UTC при записи.
         envelope.occurred_at.astimezone(UTC)
     except (ValidationError, OverflowError, ValueError):
+        return None, "invalid_event"
+    if not subject_is_valid(envelope.channel, envelope.action, envelope.subject):
         return None, "invalid_event"
     return envelope, None
 
