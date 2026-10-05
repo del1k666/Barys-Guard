@@ -9,7 +9,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.core.config import get_settings
 from barysguard.db.models.artifact import Artifact, UploadSession
@@ -237,6 +239,52 @@ async def test_storage_without_master_key_answers_503(
     response = await _open(app_client, agent, b"x")
 
     assert response.status_code == 503
+
+
+async def test_complete_is_answered_only_after_the_commit(
+    app_client, session, artifact_env, monkeypatch
+) -> None:
+    """201 «complete» уходит только после фиксации строки артефакта.
+
+    Иначе сбой commit после ответа терял бы содержимое: агент уже удалил
+    свою копию, а ключ зашифрованного файла в БД так и не попал.
+    """
+    agent = await enroll_agent(app_client, session, "up-commit")
+    data = bytes(range(250)) * 10  # 2500 байт: три чанка
+    upload_id = (await _open(app_client, agent, data)).json()["upload_id"]
+    last = 2 * CHUNK
+    for offset in (0, CHUNK):
+        part = await _put(app_client, agent, upload_id, offset, data[offset : offset + CHUNK])
+        assert part.status_code == 202, part.text
+
+    original_commit = AsyncSession.commit
+    failures = {"left": 1}
+
+    async def flaky_commit(self: AsyncSession) -> None:
+        if failures["left"]:
+            failures["left"] -= 1
+            raise ConnectionError("база недоступна")
+        await original_commit(self)
+
+    monkeypatch.setattr(AsyncSession, "commit", flaky_commit)
+    # Клиент, который видит ответ приложения, а не исключение из него:
+    # иначе нельзя отличить «сначала 201, потом сбой» от честной ошибки.
+    transport = ASGITransport(app=app_client._transport.app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as raw:
+        failed = await _put(raw, agent, upload_id, last, data[last:])
+
+    assert failed.status_code >= 500
+    assert failures["left"] == 0
+    assert (await session.scalars(select(Artifact))).all() == []
+
+    # Агент повторяет тот же чанк: его копия цела, временный файл сервера тоже.
+    retried = await _put(app_client, agent, upload_id, last, data[last:])
+
+    assert retried.status_code == 201, retried.text
+    row = (await session.scalars(select(Artifact))).one()
+    store = FileArtifactStore(artifact_env, MASTER)
+    assert b"".join(store.open(row.sha256, row.key_wrapped)) == data
+    assert not list((artifact_env / "tmp").iterdir())
 
 
 async def test_purge_removes_expired_sessions_and_their_temp_files(

@@ -40,6 +40,7 @@ from barysguard.services.artifacts import (
     UploadNotFound,
     append_chunk,
     open_upload,
+    remove_leftover,
 )
 from barysguard.services.commands import (
     MAX_COMMANDS_PER_HEARTBEAT,
@@ -353,6 +354,9 @@ async def open_artifact_upload(
         result = await open_upload(session, agent, payload.sha256, payload.size, settings)
     except ArtifactTooLarge as exc:
         raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "artifact too large") from exc
+    # Фиксация до ответа: зависимость закрывается уже после отправки, и её
+    # сбой агент не увидел бы. Повторный commit в get_session ничего не делает.
+    await session.commit()
 
     if result.exists:
         response.status_code = status.HTTP_200_OK
@@ -412,6 +416,11 @@ async def upload_artifact_chunk(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "upload not found") from exc
     except ChunkRejected as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "chunk rejected") from exc
+    # Ответ «complete» разрешает агенту удалить свою копию, поэтому он уходит
+    # только после фиксации. Сбой commit станет 5xx, временный файл останется,
+    # и повтор того же чанка завершит загрузку.
+    await session.commit()
+    await remove_leftover(result)
 
     if result.status == "offset_mismatch":
         return JSONResponse({"received_bytes": result.received_bytes}, status.HTTP_409_CONFLICT)

@@ -1,9 +1,14 @@
 """Приём артефактов: открытие сессии, чанки, завершение.
 
 Исключения не используются там, где обработчик обязан сохранить изменения в
-БД: get_session откатывает транзакцию на исключении, а временный файл к тому
-моменту уже удалён. Поэтому исходы «хеш не сошёлся» и «смещение не то»
-возвращаются значением ChunkResult.
+БД: get_session откатывает транзакцию на исключении. Поэтому исходы «хеш не
+сошёлся» и «смещение не то» возвращаются значением ChunkResult.
+
+Обработчик фиксирует транзакцию сам, до ответа: FastAPI закрывает
+зависимость get_session уже после отправки ответа, и сбой commit там агент
+не увидел бы. Временный файл завершённой сессии удаляется только после
+фиксации (ChunkResult.leftover): при сбое commit он остаётся, и повтор
+последнего чанка агентом снова доводит загрузку до конца.
 """
 
 import asyncio
@@ -47,6 +52,8 @@ class ChunkResult:
     received_bytes: int
     # partial | complete | hash_mismatch | offset_mismatch
     status: str
+    # Временный файл, который удаляется после commit, а не до него.
+    leftover: Path | None = None
 
 
 def _temp_path(settings: Settings, upload_id: uuid.UUID) -> Path:
@@ -78,6 +85,12 @@ def _sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+async def remove_leftover(result: ChunkResult) -> None:
+    """Удалить временный файл завершённой сессии. Вызывать после commit."""
+    if result.leftover is not None:
+        await asyncio.to_thread(result.leftover.unlink, True)
 
 
 async def _discard(session: AsyncSession, upload: UploadSession) -> None:
@@ -188,8 +201,9 @@ async def _finalize(
     path = Path(upload.temp_path)
     digest = await asyncio.to_thread(_sha256_file, path)
     if digest != upload.artifact_sha256:
-        await _discard(session, upload)
-        return ChunkResult(upload.received_bytes, "hash_mismatch")
+        received = upload.received_bytes
+        await session.delete(upload)
+        return ChunkResult(received, "hash_mismatch", leftover=path)
 
     # Два агента могут довести до конца один и тот же файл одновременно. Без
     # блокировки каждый записал бы файл под своим ключом, и ключ строки в БД
@@ -220,8 +234,10 @@ async def _finalize(
         )
 
     size = upload.expected_size
-    await _discard(session, upload)
-    return ChunkResult(size, "complete")
+    await session.delete(upload)
+    # Ошибки БД всплывают здесь, пока временный файл ещё на месте.
+    await session.flush()
+    return ChunkResult(size, "complete", leftover=path)
 
 
 async def purge_expired_sessions(session: AsyncSession, settings: Settings) -> int:
