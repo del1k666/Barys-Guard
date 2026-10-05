@@ -69,6 +69,9 @@ export function Shell() {
             <NavLink to="/agents" className={linkClass}>
               {ru.nav.agents}
             </NavLink>
+            <NavLink to="/events" className={linkClass}>
+              {ru.nav.events}
+            </NavLink>
           </nav>
         )}
 

@@ -40,4 +40,7 @@ export type AuditIntegrity = Schemas["AuditIntegrity"];
 
 export type Overview = Schemas["Overview"];
 
+export type EventSummary = Schemas["EventSummary"];
+export type EventPage = Schemas["EventPage"];
+
 export type AgentStatus = "pending" | "active" | "offline" | "quarantined" | "revoked";
