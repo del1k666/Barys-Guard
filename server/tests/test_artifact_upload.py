@@ -57,17 +57,20 @@ async def _put(client, agent, upload_id: str, offset: int, data: bytes):
     )
 
 
-async def _upload_all(client, agent, data: bytes):
-    opened = await _open(client, agent, data)
-    assert opened.status_code == 201, opened.text
-    upload_id = opened.json()["upload_id"]
-    offset, last = 0, None
+async def _send_chunks(client, agent, upload_id: str, data: bytes):
+    offset = 0
     while True:
         last = await _put(client, agent, upload_id, offset, data[offset : offset + CHUNK])
         assert last.status_code in (201, 202), last.text
         offset += len(data[offset : offset + CHUNK])
         if last.status_code == 201:
             return last
+
+
+async def _upload_all(client, agent, data: bytes):
+    opened = await _open(client, agent, data)
+    assert opened.status_code == 201, opened.text
+    return await _send_chunks(client, agent, opened.json()["upload_id"], data)
 
 
 async def test_upload_in_chunks_is_stored_encrypted(app_client, session, artifact_env) -> None:
@@ -207,13 +210,19 @@ async def test_concurrent_uploads_of_one_file_keep_a_single_readable_artifact(
     second = await enroll_agent(app_client, session, "up-c2")
     data = b"same bytes " * 200
 
+    # Обе сессии открываем заранее: иначе второй POST мог бы прийти после
+    # завершения первой загрузки и получить exists вместо сессии.
+    ids = [(await _open(app_client, a, data)).json()["upload_id"] for a in (first, second)]
     results = await asyncio.gather(
-        _upload_all(app_client, first, data), _upload_all(app_client, second, data)
+        _send_chunks(app_client, first, ids[0], data),
+        _send_chunks(app_client, second, ids[1], data),
     )
 
     assert all(r.status_code == 201 for r in results)
     rows = (await session.scalars(select(Artifact))).all()
     assert len(rows) == 1
+    await session.refresh(rows[0])
+    assert rows[0].ref_count == 2
     store = FileArtifactStore(artifact_env, MASTER)
     assert b"".join(store.open(rows[0].sha256, rows[0].key_wrapped)) == data
 

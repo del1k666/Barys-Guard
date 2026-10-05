@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -197,7 +197,7 @@ async def _finalize(
     await session.execute(
         text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"), {"key": digest}
     )
-    known = await session.scalar(select(Artifact).where(Artifact.sha256 == digest))
+    known = await session.scalar(select(Artifact.sha256).where(Artifact.sha256 == digest))
     if known is None:
         stored = await asyncio.to_thread(store.put, digest, path)
         session.add(
@@ -211,7 +211,13 @@ async def _finalize(
             )
         )
     else:
-        known.ref_count += 1
+        # Атомарно в SQL: open_upload параллельно увеличивает счётчик под
+        # блокировкой строки, а не под advisory-блокировкой.
+        await session.execute(
+            update(Artifact)
+            .where(Artifact.sha256 == digest)
+            .values(ref_count=Artifact.ref_count + 1)
+        )
 
     size = upload.expected_size
     await _discard(session, upload)
