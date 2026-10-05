@@ -12,7 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/barysguard/agent/internal/buffer"
+	"github.com/barysguard/agent/internal/collectors/lifecycle"
 	"github.com/barysguard/agent/internal/config"
+	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/keystore"
 	"github.com/barysguard/agent/internal/platform"
 	"github.com/barysguard/agent/internal/runner"
@@ -109,14 +112,38 @@ func loadAgent(dataDir string) (*runner.Agent, config.Layout, error) {
 		return nil, layout, err
 	}
 
+	state, err := config.LoadState(layout)
+	if err != nil {
+		return nil, layout, fmt.Errorf("состояние: %w", err)
+	}
+	buf, reset, err := buffer.OpenAt(layout, guard, buffer.LimitsFromDocument(state.Document))
+	if err != nil {
+		return nil, layout, fmt.Errorf("буфер событий: %w", err)
+	}
+
 	agent, err := runner.New(runner.Options{
 		ServerURL:    settings.ServerURL,
 		AgentVersion: agentVersion,
 		Layout:       layout,
 		Guard:        guard,
 		Client:       client,
+		Buffer:       buf,
+		Collectors:   []events.Collector{lifecycle.New(agentVersion)},
 	})
-	return agent, layout, err
+	if err != nil {
+		buf.Close()
+		return nil, layout, err
+	}
+	if reset {
+		report, envErr := events.NewEnvelope(events.ChannelAgent, "buffer_reset", events.SeverityHigh, map[string]any{
+			"component": "buffer",
+			"detail":    "ключ буфера утрачен: прежние неотправленные события потеряны",
+		})
+		if envErr == nil {
+			agent.Emit(report)
+		}
+	}
+	return agent, layout, nil
 }
 
 func commandRun(args []string) error {
@@ -130,6 +157,7 @@ func commandRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer agent.Close()
 
 	// Сигнал завершения обязан останавливать цикл, а не обрывать его
 	// посреди отправки результата команды.
