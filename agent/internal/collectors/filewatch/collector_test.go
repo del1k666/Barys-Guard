@@ -2,6 +2,7 @@ package filewatch
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"strings"
@@ -221,5 +222,85 @@ func TestCollectorStopsOnCancelAndStopsItsWatchers(t *testing.T) {
 
 	if !log.wasStopped(`C:\Users\u\Documents`) {
 		t.Fatal("наблюдатель не остановлен вместе со сборщиком")
+	}
+}
+
+func runWith(t *testing.T, deps Deps) (*collected, func()) {
+	t.Helper()
+	got := &collected{}
+	hub := deps.Hub
+	ctx, cancel := context.WithCancel(context.Background())
+	hubDone := make(chan struct{})
+	done := make(chan struct{})
+	go func() { hub.Run(ctx, nil); close(hubDone) }()
+	collector := New(deps)
+	go func() { collector.Run(ctx, got.add); close(done) }()
+	return got, func() { cancel(); <-done; <-hubDone }
+}
+
+// Наблюдатель, умерший сам (сбой чтения, папку удалили и создали заново),
+// не должен оставлять корень ненаблюдаемым до перезапуска агента.
+func TestWatcherThatDiedOnItsOwnIsRestartedByReconcile(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	start := func(ctx context.Context, root string, out chan<- Raw, _ func(string)) error {
+		mu.Lock()
+		calls++
+		n := calls
+		mu.Unlock()
+		if n == 1 {
+			return errors.New("сбой чтения")
+		}
+		<-ctx.Done()
+		return nil
+	}
+	cfg := quick
+	cfg.Paths = []string{`C:\Users\u\Documents`}
+	_, stop := runWith(t, Deps{
+		Config: cfg, Hub: volumes.NewHub(&fixedProvider{}, 20*time.Millisecond), StartWatcher: start,
+		RootExists: func(string) bool { return true }, ReconcileEvery: 30 * time.Millisecond,
+	})
+	defer stop()
+
+	eventually(t, "корень наблюдается повторно", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls >= 2
+	})
+}
+
+// Папка чужого профиля недоступна всегда: сообщить об этом надо один раз, а не
+// при каждой периодической проверке.
+func TestDeniedRootIsReportedOnlyOnceAcrossRetries(t *testing.T) {
+	var mu sync.Mutex
+	calls := 0
+	start := func(ctx context.Context, root string, out chan<- Raw, _ func(string)) error {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return fs.ErrPermission
+	}
+	cfg := quick
+	cfg.Paths = []string{`C:\Users\other\Documents`}
+	got, stop := runWith(t, Deps{
+		Config: cfg, Hub: volumes.NewHub(&fixedProvider{}, 20*time.Millisecond), StartWatcher: start,
+		RootExists: func(string) bool { return true }, ReconcileEvery: 20 * time.Millisecond,
+	})
+	defer stop()
+
+	eventually(t, "несколько повторных попыток", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return calls >= 4
+	})
+
+	denied := 0
+	for _, e := range got.snapshot() {
+		if e.Action == "watch_denied" {
+			denied++
+		}
+	}
+	if denied != 1 {
+		t.Fatalf("watch_denied прислан %d раз, ожидался один", denied)
 	}
 }

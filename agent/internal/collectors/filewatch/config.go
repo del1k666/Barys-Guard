@@ -19,7 +19,12 @@ const (
 )
 
 var (
-	defaultPaths   = []string{`%USERS%\Documents`, `%USERS%\Desktop`, `%USERS%\Downloads`}
+	// OneDrive Known Folder Move переносит папки в «OneDrive - Организация»:
+	// старые остаются пустыми, а настоящие находятся по маске.
+	defaultPaths = []string{
+		`%USERS%\Documents`, `%USERS%\Desktop`, `%USERS%\Downloads`,
+		`%USERS%\OneDrive*\Documents`, `%USERS%\OneDrive*\Desktop`, `%USERS%\OneDrive*\Downloads`,
+	}
 	defaultExclude = []string{`*\~$*`, `*.tmp`, `*.crdownload`, `*\AppData\*`}
 )
 
@@ -97,7 +102,14 @@ func expandPaths(paths, profiles []string) []string {
 			continue
 		}
 		for _, profile := range profiles {
-			out = append(out, strings.Replace(path, token, strings.TrimRight(profile, `\/`), 1))
+			expanded := strings.Replace(path, token, strings.TrimRight(profile, `\/`), 1)
+			if !strings.ContainsAny(expanded, "*?") {
+				out = append(out, expanded)
+				continue
+			}
+			// Маска раскрывается в существующие папки; нет совпадений — нет путей.
+			matches, _ := filepath.Glob(expanded)
+			out = append(out, matches...)
 		}
 	}
 	return out

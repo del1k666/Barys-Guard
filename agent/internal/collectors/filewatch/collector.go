@@ -16,6 +16,9 @@ import (
 const (
 	tickInterval = 250 * time.Millisecond
 	rawBuffer    = 4096
+	// Как часто проверять, что все корни наблюдаются: папку могли создать
+	// заново, наблюдатель мог умереть от сбоя чтения.
+	reconcileInterval = 30 * time.Second
 )
 
 type Deps struct {
@@ -28,6 +31,8 @@ type Deps struct {
 	Hasher     Hasher
 	RootExists func(root string) bool
 	Now        func() time.Time
+	// ReconcileEvery — как часто проверять, что все корни наблюдаются.
+	ReconcileEvery time.Duration
 }
 
 type Collector struct{ deps Deps }
@@ -42,6 +47,9 @@ func New(deps Deps) *Collector {
 	if deps.StartWatcher == nil {
 		deps.StartWatcher = DefaultStartWatcher
 	}
+	if deps.ReconcileEvery <= 0 {
+		deps.ReconcileEvery = reconcileInterval
+	}
 	if deps.RootExists == nil {
 		deps.RootExists = func(root string) bool { _, err := os.Stat(root); return err == nil }
 	}
@@ -53,6 +61,14 @@ func (c *Collector) Name() string { return "filewatch" }
 type root struct {
 	cancel context.CancelFunc
 	done   chan struct{}
+}
+
+// exit — сообщение циклу о том, что наблюдатель корня завершился.
+type exit struct {
+	path    string
+	entry   *root
+	err     error
+	stopped bool // остановлен самим сборщиком, а не умер
 }
 
 // Run наблюдает за папками из конфигурации и за корнями внешних томов,
@@ -72,6 +88,8 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 	})
 
 	roots := map[string]*root{}
+	exited := make(chan exit, 64)
+	reported := map[string]bool{}
 	report := func(action, path, detail string) {
 		env, err := events.NewEnvelope(events.ChannelAgent, action, events.SeverityLow, map[string]any{
 			"component": "filewatch",
@@ -92,19 +110,14 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 		entry := &root{cancel: cancel, done: make(chan struct{})}
 		roots[path] = entry
 		go func() {
-			defer close(entry.done)
 			err := c.deps.StartWatcher(rootCtx, path, raw, func(overflowed string) {
 				report("watch_overflow", overflowed, "буфер уведомлений переполнен, изменения потеряны")
 			})
-			switch {
-			case err == nil, rootCtx.Err() != nil:
-			case errors.Is(err, fs.ErrNotExist):
-				slog.Debug("наблюдаемая папка исчезла", "path", path)
-			case errors.Is(err, fs.ErrPermission):
-				report("watch_denied", path, "нет доступа к наблюдаемой папке")
+			close(entry.done)
+			// Итог разбирает цикл: только он владеет roots и reported.
+			select {
+			case exited <- exit{path: path, entry: entry, err: err, stopped: rootCtx.Err() != nil}:
 			default:
-				slog.Warn("наблюдение за папкой остановилось", "path", path, "error", err)
-				report("watch_denied", path, "наблюдение остановилось: "+err.Error())
 			}
 		}()
 	}
@@ -129,6 +142,8 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 	defer unsubscribe()
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
+	reconcile := time.NewTicker(c.deps.ReconcileEvery)
+	defer reconcile.Stop()
 
 	for {
 		select {
@@ -150,6 +165,37 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 				start(rootPath)
 			} else {
 				stop(rootPath)
+			}
+		case ev := <-exited:
+			// Умерший наблюдатель не должен оставаться в roots: иначе start()
+			// счёл бы корень «уже наблюдаемым» и не запустил его снова.
+			if roots[ev.path] == ev.entry {
+				delete(roots, ev.path)
+			}
+			if ev.stopped || ev.err == nil {
+				continue
+			}
+			switch {
+			case errors.Is(ev.err, fs.ErrNotExist):
+				slog.Debug("наблюдаемая папка исчезла", "path", ev.path)
+			case reported[ev.path]:
+				// Сообщено при первом отказе; повтор каждые полминуты был бы шумом.
+			case errors.Is(ev.err, fs.ErrPermission):
+				reported[ev.path] = true
+				report("watch_denied", ev.path, "нет доступа к наблюдаемой папке")
+			default:
+				reported[ev.path] = true
+				slog.Warn("наблюдение за папкой остановилось", "path", ev.path, "error", ev.err)
+				report("watch_denied", ev.path, "наблюдение остановилось: "+ev.err.Error())
+			}
+		case <-reconcile.C:
+			for _, path := range cfg.Paths {
+				start(path)
+			}
+			for _, volume := range c.deps.Hub.Current() {
+				if volume.Type == volumes.TypeRemovable {
+					start(volume.DriveLetter + `\`)
+				}
 			}
 		case <-ticker.C:
 			pipeline.Tick()

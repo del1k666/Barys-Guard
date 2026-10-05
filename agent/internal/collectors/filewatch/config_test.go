@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -79,5 +80,33 @@ func TestProfileDirsSkipsSystemProfiles(t *testing.T) {
 	want := []string{filepath.Join(root, "ivanov"), filepath.Join(root, "petrov")}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("профили: %v", got)
+	}
+}
+
+// OneDrive Known Folder Move переносит «Документы» и «Рабочий стол» в каталог
+// «OneDrive - Организация»: старые папки остаются пустыми, а настоящие надо найти.
+func TestUsersPathsWithAWildcardExpandToExistingFoldersOnly(t *testing.T) {
+	root := t.TempDir()
+	profile := filepath.Join(root, "ivanov")
+	real := filepath.Join(profile, "OneDrive - Контора", "Documents")
+	os.MkdirAll(real, 0o755)
+	os.MkdirAll(filepath.Join(profile, "OneDrive - Контора", "Pictures"), 0o755)
+	doc := map[string]any{"collectors": map[string]any{"file_watch": map[string]any{
+		"paths": []any{filepath.Join("%USERS%", "OneDrive*", "Documents"), filepath.Join("%USERS%", "OneDrive*", "Desktop")},
+	}}}
+
+	cfg := ConfigFromDocument(doc, []string{profile}, "")
+
+	if !reflect.DeepEqual(cfg.Paths, []string{real}) {
+		t.Fatalf("пути: %v", cfg.Paths)
+	}
+}
+
+func TestDefaultPathsIncludeOneDriveKnownFolders(t *testing.T) {
+	joined := strings.Join(defaultPaths, "\n")
+	for _, folder := range []string{"Documents", "Desktop", "Downloads"} {
+		if !strings.Contains(joined, `%USERS%\OneDrive*\`+folder) {
+			t.Errorf("в умолчаниях нет OneDrive\\%s", folder)
+		}
 	}
 }

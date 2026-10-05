@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,5 +114,27 @@ func TestDefaultHasherRejectsDirectories(t *testing.T) {
 	}
 	if got := hasher.Hash(file, 1<<20, time.Now().Add(time.Second)); got.Status != HashOK {
 		t.Fatalf("файл: %+v", got)
+	}
+}
+
+// Отказ в доступе не пройдёт от ожидания: повторять его до конца окна значит
+// даром держать цикл сборщика.
+func TestPermissionDeniedIsUnavailableWithoutRetries(t *testing.T) {
+	attempts := 0
+	hasher := Hasher{
+		Open: func(string) (io.ReadCloser, int64, error) {
+			attempts++
+			return nil, 0, fs.ErrPermission
+		},
+		Sleep: func(time.Duration) {
+			t.Fatal("отказ в доступе не должен вызывать ожидание")
+		},
+		Now: func() time.Time { return t0 },
+	}
+
+	got := hasher.Hash(`C:\private.bin`, 1<<20, t0.Add(time.Hour))
+
+	if got.Status != HashUnavailable || attempts != 1 {
+		t.Fatalf("результат %+v, попыток %d", got, attempts)
 	}
 }

@@ -1,6 +1,7 @@
 package filewatch
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -78,8 +79,10 @@ const dst = `E:\отчёт.xlsx`
 
 func TestFileCopiedToAFlashDriveIsReportedAsCopyWithItsSource(t *testing.T) {
 	h := newHarness(t, nil)
-	h.files[src] = "содержимое отчёта"
-	h.files[dst] = "содержимое отчёта"
+	// Файл крупнее minIndexedSize, иначе он не попадает в индекс источников.
+	content := strings.Repeat("содержимое отчёта ", 100)
+	h.files[src] = content
+	h.files[dst] = content
 
 	// Агент видит файл в наблюдаемой папке…
 	h.pipeline.Handle(Raw{Kind: Modified, Path: src})
@@ -232,5 +235,100 @@ func TestEventStormIsThrottledAndTheLossIsReported(t *testing.T) {
 	}
 	if files+dropped < 400 {
 		t.Fatalf("потери не сосчитаны: прошло %d, потеряно %d из ~500", files, dropped)
+	}
+}
+
+// Маски исключений защищают от шума профиля. На внешнем томе они стали бы
+// дырой: скопировать файл как E:\report.tmp и остаться невидимым.
+func TestExcludesDoNotHideFilesOnRemovableVolumes(t *testing.T) {
+	h := newHarness(t, func(_ *PipelineDeps, cfg *Config) { cfg.Exclude = []string{`*.tmp`, `*\~$*`} })
+	h.files[`E:\report.tmp`] = strings.Repeat("a", 2048)
+	h.files[`E:\~$report.xlsx`] = strings.Repeat("b", 2048)
+	h.files[`C:\Users\ivanov\scratch.tmp`] = strings.Repeat("c", 2048)
+
+	h.pipeline.Handle(Raw{Kind: Created, Path: `E:\report.tmp`})
+	h.pipeline.Handle(Raw{Kind: Created, Path: `E:\~$report.xlsx`})
+	h.pipeline.Handle(Raw{Kind: Created, Path: `C:\Users\ivanov\scratch.tmp`})
+	h.advance(2 * time.Second)
+
+	got := map[string]bool{}
+	for _, e := range h.emitted {
+		got[e.Subject["dst_path"].(string)] = true
+	}
+	if !got[`E:\report.tmp`] || !got[`E:\~$report.xlsx`] {
+		t.Fatalf("файлы на флешке скрыты исключениями: %v", got)
+	}
+	if got[`C:\Users\ivanov\scratch.tmp`] {
+		t.Fatalf("на фиксированном диске исключение должно действовать: %v", got)
+	}
+}
+
+// Пустые и крошечные файлы одинаковы у всех: «New > Text Document» на рабочем
+// столе не должен делать каждый пустой файл на флешке копией с чужим src_path.
+func TestTinyFilesAreNeverTreatedAsCopySources(t *testing.T) {
+	h := newHarness(t, nil)
+	h.files[`C:\Users\ivanov\Desktop\Новый текстовый документ.txt`] = ""
+	h.files[`E:\пустой.txt`] = ""
+	h.files[`C:\Users\ivanov\Desktop\note.txt`] = "короткая заметка"
+	h.files[`E:\note.txt`] = "короткая заметка"
+
+	h.pipeline.Handle(Raw{Kind: Created, Path: `C:\Users\ivanov\Desktop\Новый текстовый документ.txt`})
+	h.pipeline.Handle(Raw{Kind: Created, Path: `C:\Users\ivanov\Desktop\note.txt`})
+	h.advance(2 * time.Second)
+	h.pipeline.Handle(Raw{Kind: Created, Path: `E:\пустой.txt`})
+	h.pipeline.Handle(Raw{Kind: Created, Path: `E:\note.txt`})
+	h.advance(2 * time.Second)
+
+	for _, e := range h.emitted {
+		if e.Action == "copy" {
+			t.Fatalf("мелкий файл принят за копию: %+v", e.Subject)
+		}
+	}
+}
+
+// Шум в «Документах» не должен вытеснять события флешки: у внешних томов свой бюджет.
+func TestStormOnFixedDisksDoesNotCrowdOutRemovableEvents(t *testing.T) {
+	h := newHarness(t, func(_ *PipelineDeps, cfg *Config) { cfg.MaxEventsPerSecond = 10 })
+	for i := 0; i < 100; i++ {
+		path := fmt.Sprintf(`C:\Users\ivanov\Documents\noise%d.txt`, i)
+		h.files[path] = strings.Repeat("n", 2048)
+		h.pipeline.Handle(Raw{Kind: Created, Path: path})
+	}
+	h.files[`E:\секрет.xlsx`] = strings.Repeat("s", 2048)
+	h.pipeline.Handle(Raw{Kind: Created, Path: `E:\секрет.xlsx`})
+	h.advance(2 * time.Second)
+
+	found := false
+	for _, e := range h.emitted {
+		if e.Channel == "file" && e.Subject["dst_path"] == `E:\секрет.xlsx` {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("событие флешки вытеснено шумом на фиксированном диске")
+	}
+}
+
+var errLocked = errors.New("процесс не может получить доступ к файлу, так как он занят")
+
+// Занятый файл не должен замораживать цикл сборщика на всё окно max_wait:
+// пока он спит, не разбираются ни уведомления, ни подключения томов.
+func TestLockedFileDoesNotStallTheLoopForTheWholeMaxWait(t *testing.T) {
+	h := newHarness(t, nil)
+	var slept time.Duration
+	h.pipeline.deps.Hasher = Hasher{
+		Open:  func(string) (io.ReadCloser, int64, error) { return nil, 0, errLocked },
+		Sleep: func(d time.Duration) { slept += d; h.now = h.now.Add(d) },
+		Now:   func() time.Time { return h.now },
+	}
+
+	h.pipeline.Handle(Raw{Kind: Created, Path: `C:\Users\ivanov\Documents\outlook.pst`})
+	h.advance(2 * time.Second)
+
+	if slept > 4*time.Second {
+		t.Fatalf("цикл проспал %v ради одного файла (max_wait 30 с)", slept)
+	}
+	if len(h.emitted) != 1 || h.emitted[0].Labels["hash"] != "unavailable" {
+		t.Fatalf("события: %+v", h.emitted)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"time"
 )
@@ -36,23 +37,6 @@ func NewHasher() Hasher {
 	return Hasher{Open: openFile, Sleep: time.Sleep, Now: time.Now}
 }
 
-func openFile(path string) (io.ReadCloser, int64, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, 0, err
-	}
-	info, err := file.Stat()
-	if err != nil {
-		file.Close()
-		return nil, 0, err
-	}
-	if info.IsDir() {
-		file.Close()
-		return nil, 0, errIsDirectory
-	}
-	return file, info.Size(), nil
-}
-
 // Hash открывает файл и считает хеш. Файл, который копируют прямо сейчас, часто
 // занят: попытки повторяются с нарастающей паузой до deadline, затем событие
 // уходит без хеша, а не откладывается навсегда. Файл больше maxBytes не читается.
@@ -70,6 +54,11 @@ func (h Hasher) Hash(path string, maxBytes int64, deadline time.Time) HashResult
 		}
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errIsDirectory) {
 			return HashResult{Status: HashGone}
+		}
+		// Отказ в доступе не пройдёт от ожидания: повторы до конца окна только
+		// держали бы цикл сборщика.
+		if errors.Is(err, fs.ErrPermission) {
+			return HashResult{Status: HashUnavailable}
 		}
 		if !h.Now().Add(delay).Before(deadline) {
 			return HashResult{Status: HashUnavailable}

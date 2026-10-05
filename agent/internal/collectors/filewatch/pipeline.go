@@ -19,6 +19,13 @@ type Attributor interface {
 const (
 	indexCapacity = 10_000
 	indexTTL      = 24 * time.Hour
+	// Пустые и крошечные файлы одинаковы у всех («Создать > Текстовый документ»):
+	// считать их источником копирования значит выдавать чужой src_path.
+	minIndexedSize = 1024
+	// Сколько цикл сборщика готов ждать занятый файл. Пока он ждёт, не
+	// разбираются уведомления и подключения томов, поэтому окно max_wait
+	// (до 30 с) для этого слишком велико.
+	hashRetryBudget = 3 * time.Second
 )
 
 type PipelineDeps struct {
@@ -39,6 +46,7 @@ type Pipeline struct {
 	idx     *HashIndex
 	ex      *Excluder
 	lim     *Limiter
+	limUSB  *Limiter
 	dropped uint64
 }
 
@@ -49,32 +57,44 @@ func NewPipeline(deps PipelineDeps) *Pipeline {
 		idx:  NewHashIndex(indexCapacity, indexTTL),
 		ex:   NewExcluder(deps.Config.Exclude),
 		lim:  NewLimiter(deps.Config.MaxEventsPerSecond),
+		// У внешних томов свой бюджет: шум в «Документах» не должен вытеснять
+		// события флешки.
+		limUSB: NewLimiter(deps.Config.MaxEventsPerSecond),
 	}
+}
+
+// excluded применяет маски исключений, но не на внешних томах: они защищают от
+// шума профиля, а на флешке стали бы дырой (скопировать файл как E:\report.tmp).
+func (p *Pipeline) excluded(path string) bool {
+	if !p.ex.Match(path) {
+		return false
+	}
+	return VolumeFor(path, p.deps.Volumes()).Type != volumes.TypeRemovable
 }
 
 func (p *Pipeline) Handle(raw Raw) {
 	now := p.deps.Now()
 	switch raw.Kind {
 	case Created:
-		if !p.ex.Match(raw.Path) {
+		if !p.excluded(raw.Path) {
 			p.deb.Notify(raw.Path, OpCreate, now)
 		}
 	case Modified:
-		if !p.ex.Match(raw.Path) {
+		if !p.excluded(raw.Path) {
 			p.deb.Notify(raw.Path, OpModify, now)
 		}
 	case Deleted:
-		if !p.ex.Match(raw.Path) {
+		if !p.excluded(raw.Path) {
 			p.deb.Notify(raw.Path, OpDelete, now)
 		}
 	case Renamed:
 		switch {
-		case p.ex.Match(raw.Path):
+		case p.excluded(raw.Path):
 			// Файл стал временным: прежнее имя исчезло.
-			if !p.ex.Match(raw.OldPath) {
+			if !p.excluded(raw.OldPath) {
 				p.deb.Notify(raw.OldPath, OpDelete, now)
 			}
-		case p.ex.Match(raw.OldPath):
+		case p.excluded(raw.OldPath):
 			// Временный файл превратился в настоящий (так сохраняют редакторы):
 			// для оператора это появление нового файла.
 			p.deb.Notify(raw.Path, OpCreate, now)
@@ -106,26 +126,31 @@ func (p *Pipeline) Tick() {
 }
 
 func (p *Pipeline) emit(settled Settled, now time.Time) {
-	// Ограничитель стоит до хеширования: цель — не нагружать диск, а не
-	// только очередь.
-	if !p.lim.Allow(now) {
-		p.dropped++
-		return
-	}
-
 	cfg := p.deps.Config
 	vol := VolumeFor(settled.Path, p.deps.Volumes())
 	removable := vol.Type == volumes.TypeRemovable
 
+	// Ограничитель стоит до хеширования: цель — не нагружать диск, а не
+	// только очередь.
+	limiter := p.lim
+	if removable {
+		limiter = p.limUSB
+	}
+	if !limiter.Allow(now) {
+		p.dropped++
+		return
+	}
+
 	in := EventInput{Action: settled.Action, DstPath: settled.Path, OldPath: settled.OldPath, Volume: vol}
 	if settled.Action != ActionDelete {
-		in.Hash = p.deps.Hasher.Hash(settled.Path, cfg.MaxHashBytes, now.Add(cfg.MaxWait))
+		in.Hash = p.deps.Hasher.Hash(settled.Path, cfg.MaxHashBytes, now.Add(min(cfg.MaxWait, hashRetryBudget)))
 		if in.Hash.Status == HashGone {
 			return // временный файл или каталог
 		}
 	}
 
-	if in.Hash.Status == HashOK && (settled.Action == ActionCreate || settled.Action == ActionModify) {
+	if in.Hash.Status == HashOK && in.Hash.Size >= minIndexedSize &&
+		(settled.Action == ActionCreate || settled.Action == ActionModify) {
 		if removable {
 			if source, ok := p.idx.Lookup(in.Hash.SHA256, in.Hash.Size, now); ok && source != settled.Path {
 				in.Action, in.SrcPath = ActionCopy, source
