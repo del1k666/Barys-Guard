@@ -6,11 +6,12 @@
 .\stand.cmd up        # собрать и запустить
 .\stand.cmd status    # состояние и число агентов
 .\stand.cmd add-agent agent-extra-1 it
+.\stand.cmd seed      # демонстрационные события file/usb для страницы «События»
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, Mandatory = $true)]
-    [ValidateSet('up', 'down', 'reset', 'status', 'logs', 'add-agent')]
+    [ValidateSet('up', 'down', 'reset', 'status', 'logs', 'add-agent', 'seed')]
     [string]$Command,
 
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)]
@@ -175,6 +176,17 @@ function Add-StandAgent {
     Write-Host "Агент $name запущен (группа $group). Появится в консоли через несколько секунд."
 }
 
+function Add-DemoEvents {
+    Assert-DockerReady
+    if (-not (Test-StandRunning)) {
+        Write-Host 'Стенд не запущен: сначала .\stand.cmd up' -ForegroundColor Red
+        exit 1
+    }
+    # BG_STAND нужен команде как предохранитель: на боевом сервере она откажет.
+    Invoke-Compose exec -T -e BG_STAND=1 server barysguard-admin seed-demo-events
+    Write-Host 'Откройте раздел «События» в консоли.'
+}
+
 try {
     switch ($Command) {
         'up' { Start-Stand }
@@ -183,6 +195,7 @@ try {
         'status' { Show-Status }
         'logs' { Assert-DockerReady; Invoke-Compose (@('logs', '--tail', '200') + $Rest) }
         'add-agent' { Add-StandAgent }
+        'seed' { Add-DemoEvents }
     }
 }
 catch {
