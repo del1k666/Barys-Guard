@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import ColumnElement, select, tuple_
+from sqlalchemy import ColumnElement, and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.api.deps import current_user
@@ -71,7 +71,13 @@ async def list_events(
         conditions.append(Event.occurred_at <= _aware(until))
     if cursor:
         at, identifier = _decode_cursor(cursor)
-        conditions.append(tuple_(Event.occurred_at, Event.event_id) < tuple_(at, identifier))
+        # Составной курсор: строго «старше» по (occurred_at, event_id).
+        conditions.append(
+            or_(
+                Event.occurred_at < at,
+                and_(Event.occurred_at == at, Event.event_id < identifier),
+            )
+        )
 
     rows = (
         await session.execute(

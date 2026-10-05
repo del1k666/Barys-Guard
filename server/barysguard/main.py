@@ -1,5 +1,7 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Response, status
 
@@ -29,7 +31,7 @@ async def _ensure_partitions_on_startup() -> None:
 
 
 @asynccontextmanager
-async def _lifespan(_app: FastAPI):
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _ensure_partitions_on_startup()
     yield
 
@@ -95,7 +97,7 @@ def create_app() -> FastAPI:
 
     original_openapi = app.openapi
 
-    def openapi_with_envelope() -> dict:
+    def openapi_with_envelope() -> dict[str, Any]:
         # Тело /gateway/v1/events — NDJSON, FastAPI его схему не знает:
         # описание конверта добавляется в components вручную.
         schema = original_openapi()
@@ -106,7 +108,7 @@ def create_app() -> FastAPI:
             components["EventEnvelope"] = envelope
         return schema
 
-    app.openapi = openapi_with_envelope
+    app.openapi = openapi_with_envelope  # type: ignore[method-assign]
 
     return app
 
