@@ -76,11 +76,26 @@ class FileWatchConfig(BaseModel):
         return values
 
 
+class ArtifactCollectorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024, le=1024 * 1024 * 1024)
+    staging_max_bytes: int = Field(
+        default=500 * 1024 * 1024, ge=1024 * 1024, le=50 * 1024 * 1024 * 1024
+    )
+    upload_bytes_per_second: int = Field(default=2 * 1024 * 1024, ge=1024, le=1024 * 1024 * 1024)
+    stage_bytes_per_minute: int = Field(
+        default=200 * 1024 * 1024, ge=1024 * 1024, le=100 * 1024 * 1024 * 1024
+    )
+
+
 class CollectorsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     usb: UsbCollectorConfig = UsbCollectorConfig()
     file_watch: FileWatchConfig = FileWatchConfig()
+    artifact: ArtifactCollectorConfig = ArtifactCollectorConfig()
 
 
 class AgentConfigDocument(BaseModel):

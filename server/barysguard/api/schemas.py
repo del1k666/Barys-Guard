@@ -303,6 +303,7 @@ class EventSummary(BaseModel):
     subject: dict[str, Any]
     labels: dict[str, Any]
     artifact_sha256: str | None
+    artifact_uploaded: bool = False
 
 
 class EventPage(BaseModel):

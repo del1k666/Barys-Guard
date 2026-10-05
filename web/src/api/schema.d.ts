@@ -193,6 +193,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/gateway/v1/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Artifact Upload
+         * @description Открыть загрузку: сервер либо уже имеет артефакт, либо выдаёт сессию.
+         */
+        post: operations["open_artifact_upload_gateway_v1_artifacts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/gateway/v1/artifacts/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Artifact Chunk
+         * @description Очередной чанк. Смещение обязано совпасть с числом уже принятых байт.
+         */
+        put: operations["upload_artifact_chunk_gateway_v1_artifacts__upload_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -765,6 +805,13 @@ export interface components {
              *           "%USERS%\\Downloads"
              *         ],
              *         "stable_ms": 1500
+             *       },
+             *       "artifact": {
+             *         "enabled": true,
+             *         "max_bytes": 52428800,
+             *         "stage_bytes_per_minute": 209715200,
+             *         "staging_max_bytes": 524288000,
+             *         "upload_bytes_per_second": 2097152
              *       }
              *     }
              */
@@ -880,6 +927,59 @@ export interface components {
             user: components["schemas"]["UserSummary"];
             /** Api Key */
             api_key: string;
+        };
+        /** ArtifactChunkResponse */
+        ArtifactChunkResponse: {
+            /** Received Bytes */
+            received_bytes: number;
+            /** Status */
+            status: string;
+        };
+        /** ArtifactCollectorConfig */
+        ArtifactCollectorConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Max Bytes
+             * @default 52428800
+             */
+            max_bytes: number;
+            /**
+             * Staging Max Bytes
+             * @default 524288000
+             */
+            staging_max_bytes: number;
+            /**
+             * Upload Bytes Per Second
+             * @default 2097152
+             */
+            upload_bytes_per_second: number;
+            /**
+             * Stage Bytes Per Minute
+             * @default 209715200
+             */
+            stage_bytes_per_minute: number;
+        };
+        /** ArtifactOpenRequest */
+        ArtifactOpenRequest: {
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+        };
+        /** ArtifactOpenResponse */
+        ArtifactOpenResponse: {
+            /** Status */
+            status: string;
+            /** Upload Id */
+            upload_id?: string | null;
+            /** Received Bytes */
+            received_bytes?: number | null;
+            /** Chunk Size */
+            chunk_size?: number | null;
         };
         /** AuditEntry */
         AuditEntry: {
@@ -1005,6 +1105,16 @@ export interface components {
              *     }
              */
             file_watch: components["schemas"]["FileWatchConfig"];
+            /**
+             * @default {
+             *       "enabled": true,
+             *       "max_bytes": 52428800,
+             *       "staging_max_bytes": 524288000,
+             *       "upload_bytes_per_second": 2097152,
+             *       "stage_bytes_per_minute": 209715200
+             *     }
+             */
+            artifact: components["schemas"]["ArtifactCollectorConfig"];
         };
         /** CommandCounts */
         CommandCounts: {
@@ -1280,6 +1390,11 @@ export interface components {
             };
             /** Artifact Sha256 */
             artifact_sha256: string | null;
+            /**
+             * Artifact Uploaded
+             * @default false
+             */
+            artifact_uploaded: boolean;
         };
         /** EventsResult */
         EventsResult: {
@@ -2039,6 +2154,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventsResult"];
+                };
+            };
+        };
+    };
+    open_artifact_upload_gateway_v1_artifacts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArtifactOpenRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactOpenResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_artifact_chunk_gateway_v1_artifacts__upload_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Offset": number;
+            };
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactChunkResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

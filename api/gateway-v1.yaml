@@ -217,6 +217,76 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventsResult'
+  /gateway/v1/artifacts:
+    post:
+      tags:
+      - gateway
+      summary: Open Artifact Upload
+      description: 'Открыть загрузку: сервер либо уже имеет артефакт, либо выдаёт
+        сессию.'
+      operationId: open_artifact_upload_gateway_v1_artifacts_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactOpenRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactOpenResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/v1/artifacts/{upload_id}:
+    put:
+      tags:
+      - gateway
+      summary: Upload Artifact Chunk
+      description: Очередной чанк. Смещение обязано совпасть с числом уже принятых
+        байт.
+      operationId: upload_artifact_chunk_gateway_v1_artifacts__upload_id__put
+      parameters:
+      - name: upload_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Upload Id
+      - name: X-Offset
+        in: header
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          title: X-Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactChunkResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
   /api/v1/auth/login:
     post:
       tags:
@@ -1331,6 +1401,12 @@ components:
               - '%USERS%\Desktop'
               - '%USERS%\Downloads'
               stable_ms: 1500
+            artifact:
+              enabled: true
+              max_bytes: 52428800
+              stage_bytes_per_minute: 209715200
+              staging_max_bytes: 524288000
+              upload_bytes_per_second: 2097152
         policies:
           additionalProperties: true
           type: object
@@ -1555,6 +1631,92 @@ components:
       - user
       - api_key
       title: ApiKeyResponse
+    ArtifactChunkResponse:
+      properties:
+        received_bytes:
+          type: integer
+          title: Received Bytes
+        status:
+          type: string
+          title: Status
+      type: object
+      required:
+      - received_bytes
+      - status
+      title: ArtifactChunkResponse
+    ArtifactCollectorConfig:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        max_bytes:
+          type: integer
+          maximum: 1073741824.0
+          minimum: 1024.0
+          title: Max Bytes
+          default: 52428800
+        staging_max_bytes:
+          type: integer
+          maximum: 53687091200.0
+          minimum: 1048576.0
+          title: Staging Max Bytes
+          default: 524288000
+        upload_bytes_per_second:
+          type: integer
+          maximum: 1073741824.0
+          minimum: 1024.0
+          title: Upload Bytes Per Second
+          default: 2097152
+        stage_bytes_per_minute:
+          type: integer
+          maximum: 107374182400.0
+          minimum: 1048576.0
+          title: Stage Bytes Per Minute
+          default: 209715200
+      additionalProperties: false
+      type: object
+      title: ArtifactCollectorConfig
+    ArtifactOpenRequest:
+      properties:
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+        size:
+          type: integer
+          minimum: 0.0
+          title: Size
+      type: object
+      required:
+      - sha256
+      - size
+      title: ArtifactOpenRequest
+    ArtifactOpenResponse:
+      properties:
+        status:
+          type: string
+          title: Status
+        upload_id:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Upload Id
+        received_bytes:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Received Bytes
+        chunk_size:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Chunk Size
+      type: object
+      required:
+      - status
+      title: ArtifactOpenResponse
     AuditEntry:
       properties:
         id:
@@ -1742,6 +1904,14 @@ components:
             max_wait_ms: 30000
             max_hash_bytes: 268435456
             max_events_per_second: 200
+        artifact:
+          $ref: '#/components/schemas/ArtifactCollectorConfig'
+          default:
+            enabled: true
+            max_bytes: 52428800
+            staging_max_bytes: 524288000
+            upload_bytes_per_second: 2097152
+            stage_bytes_per_minute: 209715200
       additionalProperties: false
       type: object
       title: CollectorsConfig
@@ -2198,6 +2368,10 @@ components:
           - type: string
           - type: 'null'
           title: Artifact Sha256
+        artifact_uploaded:
+          type: boolean
+          title: Artifact Uploaded
+          default: false
       type: object
       required:
       - event_id

@@ -52,3 +52,20 @@ async def test_agent_receives_collectors_defaults(app_client, session) -> None:
     document = response.json()["document"]
     assert document["collectors"]["file_watch"]["stable_ms"] == 1500
     assert document["collectors"]["usb"]["enabled"] is True
+
+
+def test_artifact_defaults_match_the_spec() -> None:
+    artifact = AgentConfigDocument().collectors.artifact
+
+    assert artifact.enabled is True
+    assert artifact.max_bytes == 52_428_800
+    assert artifact.staging_max_bytes == 524_288_000
+    assert artifact.upload_bytes_per_second == 2_097_152
+    assert artifact.stage_bytes_per_minute == 209_715_200
+
+
+def test_artifact_rejects_unknown_keys_and_absurd_values() -> None:
+    with pytest.raises(ValidationError):
+        AgentConfigDocument.model_validate({"collectors": {"artifact": {"max_byte": 1}}})
+    with pytest.raises(ValidationError):
+        AgentConfigDocument.model_validate({"collectors": {"artifact": {"max_bytes": 0}}})

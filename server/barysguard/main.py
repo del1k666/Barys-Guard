@@ -1,6 +1,7 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from typing import Any
 
 from fastapi import FastAPI, Response, status
@@ -30,10 +31,38 @@ async def _ensure_partitions_on_startup() -> None:
         logger.warning("не удалось создать разделы events при старте", exc_info=True)
 
 
+async def _purge_upload_sessions() -> None:
+    """Удаляет просроченные сессии загрузки вместе с временными файлами."""
+    from barysguard.db.session import _get_sessionmaker
+    from barysguard.services.artifacts import purge_expired_sessions
+
+    try:
+        async with _get_sessionmaker()() as session:
+            removed = await purge_expired_sessions(session, get_settings())
+            await session.commit()
+        if removed:
+            logger.info("удалено просроченных сессий загрузки: %d", removed)
+    except Exception:
+        logger.warning("не удалось очистить сессии загрузки", exc_info=True)
+
+
+async def _purge_loop() -> None:
+    while True:
+        await asyncio.sleep(3600)
+        await _purge_upload_sessions()
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _ensure_partitions_on_startup()
-    yield
+    await _purge_upload_sessions()
+    purger = asyncio.create_task(_purge_loop())
+    try:
+        yield
+    finally:
+        purger.cancel()
+        with suppress(asyncio.CancelledError):
+            await purger
 
 
 def create_app() -> FastAPI:

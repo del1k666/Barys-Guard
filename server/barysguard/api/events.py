@@ -5,12 +5,13 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import ColumnElement, and_, or_, select
+from sqlalchemy import ColumnElement, and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.api.deps import current_user
 from barysguard.api.schemas import EventPage, EventSummary
 from barysguard.db.models.agent import Agent
+from barysguard.db.models.artifact import Artifact
 from barysguard.db.models.event import Event
 from barysguard.db.models.user import User
 from barysguard.db.session import get_session
@@ -79,9 +80,14 @@ async def list_events(
             )
         )
 
+    uploaded = (
+        exists(select(Artifact.id).where(Artifact.sha256 == Event.artifact_sha256))
+        .correlate(Event)
+        .label("artifact_uploaded")
+    )
     rows = (
         await session.execute(
-            select(Event, Agent.hostname)
+            select(Event, Agent.hostname, uploaded)
             .join(Agent, Agent.id == Event.agent_id)
             .where(*conditions)
             .order_by(Event.occurred_at.desc(), Event.event_id.desc())
@@ -112,8 +118,9 @@ async def list_events(
                 subject=event.subject,
                 labels=event.labels,
                 artifact_sha256=event.artifact_sha256,
+                artifact_uploaded=bool(is_uploaded),
             )
-            for event, hostname in page
+            for event, hostname, is_uploaded in page
         ],
         next_cursor=next_cursor,
     )

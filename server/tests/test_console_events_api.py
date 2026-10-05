@@ -166,3 +166,33 @@ async def test_overview_counts_events_of_the_last_day(app_client, session) -> No
     await _send(app_client, enrolled, _event(at=now), _event(at=now - timedelta(days=3)))
 
     assert (await app_client.get("/api/v1/overview")).json()["events_24h"] == 1
+
+
+async def test_event_reports_whether_its_artifact_was_uploaded(app_client, session) -> None:
+    from barysguard.db.models.artifact import Artifact
+
+    await login_as(app_client, session, username="ev-art", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "ev-art-agent")
+    sha = "cd" * 32
+    now = datetime.now(UTC)
+    await _send(
+        app_client,
+        agent,
+        _event(
+            at=now,
+            channel="file",
+            action="create",
+            subject={"dst_path": "E:\a.txt", "volume": {"type": "removable"}},
+            artifact={"sha256": sha, "size": 5, "uploaded": False},
+        ),
+        _event(at=now - timedelta(minutes=1), action="start"),
+    )
+
+    before = (await app_client.get("/api/v1/events")).json()["items"]
+    assert [item["artifact_uploaded"] for item in before] == [False, False]
+
+    session.add(Artifact(sha256=sha, size=5, storage_path="x", key_wrapped=b"k" * 40))
+    await session.commit()
+
+    after = (await app_client.get("/api/v1/events")).json()["items"]
+    assert [item["artifact_uploaded"] for item in after] == [True, False]
