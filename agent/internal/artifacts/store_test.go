@@ -278,3 +278,73 @@ func TestEvictionSkipsAnEntryThatCannotBeRemoved(t *testing.T) {
 		t.Fatalf("вытеснено %d, ожидалось 1: занятая копия не считается", got)
 	}
 }
+
+// Копия под пределом не должна перечитывать каталог: цикл наблюдателя за
+// файлами вызывает Begin на каждую запись.
+func TestBeginUnderTheLimitDoesNotListTheDirectory(t *testing.T) {
+	store, _ := newTestStore(t, nil)
+	before := store.listCalls.Load()
+
+	for i := 0; i < 50; i++ {
+		stage(t, store, []byte(fmt.Sprintf("копия %d", i)))
+	}
+
+	if got := store.listCalls.Load() - before; got != 0 {
+		t.Fatalf("каталог перечитан %d раз под пределом", got)
+	}
+	if entries, _ := store.List(); len(entries) != 50 {
+		t.Fatalf("копий %d, ожидалось 50", len(entries))
+	}
+}
+
+// Файл удалён в обход Store: при проверке предела сумма пересчитывается, и
+// лишняя копия не вытесняется.
+func TestTotalSelfHealsAgainstFilesDeletedBehindTheStore(t *testing.T) {
+	store, _ := newTestStore(t, func(c *Config) { c.StagingMaxBytes = 2500 })
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	a := bytes.Repeat([]byte("a"), 1000)
+	b := bytes.Repeat([]byte("b"), 1000)
+	stage(t, store, a)
+	age(t, store, shaOf(a), len(a), base)
+	stage(t, store, b)
+	os.Remove(filepath.Join(store.dir, fmt.Sprintf("%s-%d.enc", shaOf(b), len(b))))
+
+	stage(t, store, bytes.Repeat([]byte("c"), 1000))
+
+	entries, _ := store.List()
+	if len(entries) != 2 || store.TakeDropped() != 0 {
+		t.Fatalf("копий %d: вытеснено лишнее по устаревшей сумме", len(entries))
+	}
+}
+
+func TestRemoveFreesRoomWithoutEviction(t *testing.T) {
+	store, _ := newTestStore(t, func(c *Config) { c.StagingMaxBytes = 2500 })
+	small := bytes.Repeat([]byte("s"), 500)
+	big := bytes.Repeat([]byte("b"), 1500)
+	stage(t, store, small)
+	stage(t, store, big)
+	for _, e := range mustList(t, store) {
+		if e.SHA256 == shaOf(big) {
+			store.Remove(e)
+		}
+	}
+	before := store.listCalls.Load()
+
+	stage(t, store, bytes.Repeat([]byte("n"), 1500))
+
+	if got := store.listCalls.Load() - before; got != 0 {
+		t.Fatalf("каталог перечитан %d раз: Remove не уменьшил сумму", got)
+	}
+	if len(mustList(t, store)) != 2 || store.TakeDropped() != 0 {
+		t.Fatal("после Remove новая копия должна поместиться без вытеснения")
+	}
+}
+
+func mustList(t *testing.T, store *Store) []Entry {
+	t.Helper()
+	entries, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return entries
+}

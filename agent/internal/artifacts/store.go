@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -60,12 +61,18 @@ type Store struct {
 	staged chan struct{}
 	// remove — удаление файла копии; подменяется в тестах.
 	remove func(string) error
+	// listCalls — число перечислений каталога; читают тесты.
+	listCalls atomic.Int64
 
 	mu          sync.Mutex
 	cfg         Config
 	windowStart time.Time
 	windowBytes int64
 	dropped     uint64
+	// total — сумма открытого текста завершённых копий. Ведётся на ходу, чтобы
+	// Begin не перечитывал каталог на каждую копию; при упоре в предел
+	// пересчитывается по каталогу (файлы, заменённые или удалённые в обход Store).
+	total int64
 }
 
 // NewStore открывает каталог копий. Права на него выставляет вызывающий
@@ -79,10 +86,24 @@ func NewStore(dir string, key []byte, now func() time.Time) (*Store, error) {
 	for _, path := range leftovers {
 		os.Remove(path)
 	}
-	return &Store{
+	store := &Store{
 		dir: dir, key: key, now: now, cfg: DefaultConfig(),
 		staged: make(chan struct{}, 1), remove: os.Remove,
-	}, nil
+	}
+	entries, err := store.List()
+	if err != nil {
+		return nil, err
+	}
+	store.total = sumSizes(entries)
+	return store, nil
+}
+
+func sumSizes(entries []Entry) int64 {
+	var total int64
+	for _, e := range entries {
+		total += e.Size
+	}
+	return total
 }
 
 func (s *Store) SetConfig(cfg Config) {
@@ -156,29 +177,31 @@ func (s *Store) Begin(size int64) (Sink, string) {
 
 // makeRoomLocked вытесняет самые старые копии, пока новая не поместится.
 // Сумма считается по размеру открытого текста: шифрование добавляет доли процента.
+// Каталог перечитывается только при упоре в предел.
 func (s *Store) makeRoomLocked(size, limit int64) {
+	if s.total+size <= limit {
+		return
+	}
 	entries, err := s.List()
 	if err != nil {
 		return
 	}
-	var total int64
-	for _, e := range entries {
-		total += e.Size
-	}
-	for len(entries) > 0 && total+size > limit {
+	s.total = sumSizes(entries)
+	for len(entries) > 0 && s.total+size > limit {
 		oldest := entries[0]
 		entries = entries[1:]
 		// Не удалось удалить (на Windows файл может быть открыт воркером):
 		// места это не освободило и потерей не считается, идём к следующей.
 		if s.remove(filepath.Join(s.dir, oldest.name)) == nil {
 			s.dropped++
-			total -= oldest.Size
+			s.total -= oldest.Size
 		}
 	}
 }
 
 // List отдаёт копии, старые первыми.
 func (s *Store) List() ([]Entry, error) {
+	s.listCalls.Add(1)
 	files, err := os.ReadDir(s.dir)
 	if err != nil {
 		return nil, err
@@ -225,7 +248,11 @@ func (s *Store) Open(e Entry) (io.ReadCloser, error) {
 }
 
 func (s *Store) Remove(e Entry) {
-	os.Remove(filepath.Join(s.dir, e.name))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if os.Remove(filepath.Join(s.dir, e.name)) == nil {
+		s.total = max(s.total-e.Size, 0)
+	}
 }
 
 type sink struct {
@@ -289,6 +316,11 @@ func (k *sink) Commit(sha256 string) error {
 		os.Remove(temporary)
 		return err
 	}
+	// Замена копии с тем же именем учтётся дважды; это лишь раньше
+	// приведёт к пересчёту по каталогу в Begin.
+	k.store.mu.Lock()
+	k.store.total += k.enc.plain
+	k.store.mu.Unlock()
 	select {
 	case k.store.staged <- struct{}{}:
 	default:
