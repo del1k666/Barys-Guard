@@ -21,6 +21,7 @@ type fakeServer struct {
 	size      int64
 	received  []byte
 	known     bool
+	stuck     bool // всегда «partial» без продвижения
 	staleOpen bool // Open сообщает 0 принятых байт, хотя они есть
 
 	failOpen  error
@@ -62,6 +63,9 @@ func (f *fakeServer) UploadChunk(_ context.Context, _ string, offset int64, data
 		return transport.ArtifactChunkResponse{}, &transport.StatusError{
 			Code: 409, Body: fmt.Sprintf(`{"received_bytes":%d}`, len(f.received)),
 		}
+	}
+	if f.stuck {
+		return transport.ArtifactChunkResponse{ReceivedBytes: offset, Status: "partial"}, nil
 	}
 	f.received = append(f.received, data...)
 	status := "partial"
@@ -338,5 +342,97 @@ func TestDroppedCopiesAreReportedOnceAsAnAgentEvent(t *testing.T) {
 	}
 	if got[0].Channel != events.ChannelAgent || got[0].Action != "artifact_dropped" {
 		t.Fatalf("событие = %+v", got[0])
+	}
+}
+
+// Сервер отвечает «partial» без продвижения: проход обязан завершиться.
+func TestPartialWithoutProgressStopsThePass(t *testing.T) {
+	for name, size := range map[string]int{"data": 3000, "empty": 0} {
+		t.Run(name, func(t *testing.T) {
+			h := newWorkerHarness(t)
+			h.api.stuck = true
+			var data []byte
+			if size > 0 {
+				data = randomBytes(size)
+			}
+			stage(t, h.store, data)
+
+			h.worker.Pass(context.Background())
+
+			if h.api.chunks > 3 {
+				t.Fatalf("чанков %d: воркер крутится на месте", h.api.chunks)
+			}
+			if h.pending(t) != 1 {
+				t.Fatal("копия должна остаться")
+			}
+			if len(h.worker.retry) != 1 {
+				t.Fatal("состояние паузы не выставлено")
+			}
+		})
+	}
+}
+
+func TestBackoffStateIsPrunedWhenTheCopyVanishes(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.api.failOpen = &transport.StatusError{Code: 503}
+	stage(t, h.store, randomBytes(2000))
+	h.worker.Pass(context.Background())
+	if len(h.worker.retry) != 1 {
+		t.Fatal("нет состояния паузы")
+	}
+	entries, _ := h.store.List()
+	os.Remove(filepath.Join(h.store.dir, entries[0].name))
+
+	h.worker.Pass(context.Background())
+
+	if len(h.worker.retry) != 0 || len(h.worker.resets) != 0 {
+		t.Fatalf("retry=%d resets=%d", len(h.worker.retry), len(h.worker.resets))
+	}
+}
+
+func TestStaleHashRetryCounterDoesNotHitARestagedCopy(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.api.failChunk = func(int64) error { return &transport.StatusError{Code: 422} }
+	data := randomBytes(2000)
+	stage(t, h.store, data)
+	h.worker.Pass(context.Background())
+	entries, _ := h.store.List()
+	os.Remove(filepath.Join(h.store.dir, entries[0].name))
+	h.worker.Pass(context.Background()) // прореживание
+
+	stage(t, h.store, data)
+	h.clock.now = h.clock.now.Add(time.Hour)
+	h.worker.Pass(context.Background())
+
+	if h.pending(t) != 1 || h.store.TakeDropped() != 0 {
+		t.Fatal("первая 422 новой копии не должна её снимать")
+	}
+}
+
+func TestAuthAndTimeoutErrorsAreTransient(t *testing.T) {
+	for _, code := range []int{401, 403, 408} {
+		h := newWorkerHarness(t)
+		h.api.failOpen = &transport.StatusError{Code: code}
+		stage(t, h.store, randomBytes(2000))
+
+		h.worker.Pass(context.Background())
+
+		if h.pending(t) != 1 || h.store.TakeDropped() != 0 || len(h.worker.retry) != 1 {
+			t.Fatalf("код %d: копия потеряна или пауза не выставлена", code)
+		}
+	}
+}
+
+func TestOtherClientErrorsStillDrop(t *testing.T) {
+	for _, code := range []int{400, 413} {
+		h := newWorkerHarness(t)
+		h.api.failOpen = &transport.StatusError{Code: code}
+		stage(t, h.store, randomBytes(2000))
+
+		h.worker.Pass(context.Background())
+
+		if h.pending(t) != 0 || h.store.TakeDropped() != 1 {
+			t.Fatalf("код %d: копия должна быть снята", code)
+		}
 	}
 }

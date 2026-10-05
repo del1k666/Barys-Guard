@@ -110,6 +110,7 @@ func (w *Worker) Pass(ctx context.Context) {
 		slog.Warn("каталог копий не прочитан", "error", err)
 		return
 	}
+	w.prune(entries)
 	for _, entry := range entries {
 		if ctx.Err() != nil {
 			return
@@ -118,6 +119,25 @@ func (w *Worker) Pass(ctx context.Context) {
 			continue
 		}
 		w.settle(ctx, entry, w.upload(ctx, entry))
+	}
+}
+
+// prune забывает состояние копий, которых в каталоге уже нет (вытеснены или
+// удалены): иначе устаревший счётчик повторов ударил бы по новой копии с тем же хешем.
+func (w *Worker) prune(entries []Entry) {
+	present := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		present[e.SHA256] = true
+	}
+	for key := range w.retry {
+		if !present[key] {
+			delete(w.retry, key)
+		}
+	}
+	for key := range w.resets {
+		if !present[key] {
+			delete(w.resets, key)
+		}
 	}
 }
 
@@ -140,7 +160,12 @@ func (w *Worker) upload(ctx context.Context, entry Entry) error {
 
 	offset := open.ReceivedBytes
 	repositions := 0
-	for {
+	// Жёсткий предел числа обращений: сервер не должен держать воркер вечно.
+	limit := (entry.Size+chunk-1)/chunk + 1 + maxRepositions
+	for iteration := int64(0); ; iteration++ {
+		if iteration >= limit {
+			return errIncomplete
+		}
 		data, err := source.read(offset, chunk)
 		if err != nil {
 			return err
@@ -170,6 +195,11 @@ func (w *Worker) upload(ctx context.Context, entry Entry) error {
 			source.close()
 			w.store.Remove(entry)
 			return nil
+		}
+		// Ответ «partial» без продвижения (и любой не-complete для пустого
+		// файла) зациклил бы воркер: откладываем файл с паузой.
+		if len(data) == 0 || resp.ReceivedBytes <= offset {
+			return errIncomplete
 		}
 		offset = resp.ReceivedBytes
 	}
@@ -219,7 +249,7 @@ func (w *Worker) settle(ctx context.Context, entry Entry, err error) {
 		case status.Code == http.StatusNotFound:
 			// Сессия истекла: следующий проход откроет новую.
 			w.backoff(entry, 0)
-		case status.Code == http.StatusTooManyRequests || status.Code >= 500:
+		case isTransient(status.Code):
 			w.backoff(entry, status.RetryAfter)
 		default:
 			slog.Warn("сервер отверг файл", "sha256", entry.SHA256, "status", status.Code)
@@ -311,4 +341,15 @@ func (c *chunkSource) close() {
 		c.reader.Close()
 		c.reader = nil
 	}
+}
+
+// isTransient — коды, после которых файл нужно сохранить и повторить позже.
+// 401/403 — сбой на всём шлюзе (ротация сертификата, прокси, отозванный агент):
+// сбросив копии по ним, мы бы безвозвратно потеряли всё накопленное.
+func isTransient(code int) bool {
+	switch code {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusRequestTimeout, http.StatusTooManyRequests:
+		return true
+	}
+	return code >= 500
 }
