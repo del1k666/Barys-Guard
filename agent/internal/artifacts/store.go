@@ -23,9 +23,10 @@ const (
 )
 
 var (
-	errTooLarge  = errors.New("файл больше предела копирования")
-	shaPattern   = regexp.MustCompile(`^[0-9a-f]{64}$`)
-	entryPattern = regexp.MustCompile(`^([0-9a-f]{64})-(\d+)\.enc$`)
+	errTooLarge   = errors.New("файл больше предела копирования")
+	errSinkClosed = errors.New("копия уже завершена")
+	shaPattern    = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	entryPattern  = regexp.MustCompile(`^([0-9a-f]{64})-(\d+)\.enc$`)
 )
 
 // Sink принимает копию читаемого файла. Ошибка Write означает «копию не
@@ -57,6 +58,8 @@ type Store struct {
 	key    []byte
 	now    func() time.Time
 	staged chan struct{}
+	// remove — удаление файла копии; подменяется в тестах.
+	remove func(string) error
 
 	mu          sync.Mutex
 	cfg         Config
@@ -78,7 +81,7 @@ func NewStore(dir string, key []byte, now func() time.Time) (*Store, error) {
 	}
 	return &Store{
 		dir: dir, key: key, now: now, cfg: DefaultConfig(),
-		staged: make(chan struct{}, 1),
+		staged: make(chan struct{}, 1), remove: os.Remove,
 	}, nil
 }
 
@@ -109,7 +112,9 @@ func (s *Store) markDropped() {
 }
 
 // Begin открывает приёмник копии. Размер известен из stat до чтения, поэтому
-// крупный файл не копируется вовсе.
+// крупный файл не копируется вовсе. Вызывается из единственного цикла
+// наблюдателя за файлами, поэтому незавершённые копии не учитываются в
+// StagingMaxBytes (известная граница: до MaxBytes на каждую параллельную копию).
 func (s *Store) Begin(size int64) (Sink, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,10 +168,12 @@ func (s *Store) makeRoomLocked(size, limit int64) {
 	for len(entries) > 0 && total+size > limit {
 		oldest := entries[0]
 		entries = entries[1:]
-		if os.Remove(filepath.Join(s.dir, oldest.name)) == nil {
+		// Не удалось удалить (на Windows файл может быть открыт воркером):
+		// места это не освободило и потерей не считается, идём к следующей.
+		if s.remove(filepath.Join(s.dir, oldest.name)) == nil {
 			s.dropped++
+			total -= oldest.Size
 		}
-		total -= oldest.Size
 	}
 }
 
@@ -227,14 +234,27 @@ type sink struct {
 	enc   *encryptWriter
 	limit int64
 	done  bool
+	// failed — первая ошибка записи: после неё копия испорчена и не публикуется.
+	failed error
 }
 
 func (k *sink) Write(p []byte) (int, error) {
+	if k.done {
+		return 0, errSinkClosed
+	}
+	if k.failed != nil {
+		return 0, k.failed
+	}
 	// Файл мог вырасти между stat и чтением: предел действует на фактические байты.
 	if k.enc.plain+int64(len(p)) > k.limit {
-		return 0, errTooLarge
+		k.failed = errTooLarge
+		return 0, k.failed
 	}
-	return k.enc.Write(p)
+	n, err := k.enc.Write(p)
+	if err != nil {
+		k.failed = err
+	}
+	return n, err
 }
 
 func (k *sink) Commit(sha256 string) error {
@@ -242,6 +262,10 @@ func (k *sink) Commit(sha256 string) error {
 		return nil
 	}
 	k.done = true
+	if k.failed != nil {
+		k.discard()
+		return k.failed
+	}
 	// Хеш становится именем файла: он обязан быть именно хешем.
 	if !shaPattern.MatchString(sha256) {
 		k.discard()

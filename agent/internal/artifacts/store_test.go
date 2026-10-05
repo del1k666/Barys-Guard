@@ -213,3 +213,68 @@ func TestLeftoverTemporaryFilesAreRemovedAtStart(t *testing.T) {
 		t.Fatal("временный файл прошлого запуска остался")
 	}
 }
+
+// После ошибки записи копия считается испорченной: ни последующая запись, ни
+// Commit не должны опубликовать файл с пробелом под хешем полного содержимого.
+func TestFailedWriteIsStickyAndCommitDoesNotPublish(t *testing.T) {
+	store, _ := newTestStore(t, func(c *Config) { c.MaxBytes = 1000 })
+	sink, _ := store.Begin(10)
+
+	if _, err := sink.Write(make([]byte, 2000)); err == nil {
+		t.Fatal("запись сверх предела должна завершиться ошибкой")
+	}
+	if _, err := sink.Write([]byte("short")); err == nil {
+		t.Fatal("запись после сбоя должна завершаться ошибкой")
+	}
+	if err := sink.Commit(shaOf([]byte("full"))); err == nil {
+		t.Fatal("Commit после сбоя не должен публиковать копию")
+	}
+	if files, _ := os.ReadDir(store.dir); len(files) != 0 {
+		t.Fatalf("в каталоге %d файлов, ожидалось 0", len(files))
+	}
+}
+
+func TestWriteAfterAbortFails(t *testing.T) {
+	store, _ := newTestStore(t, nil)
+	sink, _ := store.Begin(3)
+	sink.Abort()
+	if _, err := sink.Write([]byte("abc")); err == nil {
+		t.Fatal("запись после Abort должна завершаться ошибкой")
+	}
+}
+
+// Файл занят (на Windows — воркером при загрузке): его нельзя считать
+// вытесненным, вытеснение идёт дальше к следующей копии.
+func TestEvictionSkipsAnEntryThatCannotBeRemoved(t *testing.T) {
+	store, _ := newTestStore(t, func(c *Config) { c.StagingMaxBytes = 2500 })
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	a := bytes.Repeat([]byte("a"), 1000)
+	b := bytes.Repeat([]byte("b"), 1000)
+	c := bytes.Repeat([]byte("c"), 1000)
+	stage(t, store, a)
+	age(t, store, shaOf(a), len(a), base)
+	stage(t, store, b)
+	age(t, store, shaOf(b), len(b), base.Add(time.Hour))
+
+	busy := fmt.Sprintf("%s-%d.enc", shaOf(a), len(a))
+	store.remove = func(path string) error {
+		if filepath.Base(path) == busy {
+			return os.ErrPermission
+		}
+		return os.Remove(path)
+	}
+	stage(t, store, c)
+
+	names := map[string]bool{}
+	entries, _ := store.List()
+	for _, e := range entries {
+		names[e.SHA256] = true
+	}
+	if !names[shaOf(a)] || names[shaOf(b)] || !names[shaOf(c)] {
+		t.Fatalf("после вытеснения остались %v, ожидались a и c", names)
+	}
+	if got := store.TakeDropped(); got != 1 {
+		t.Fatalf("вытеснено %d, ожидалось 1: занятая копия не считается", got)
+	}
+}
