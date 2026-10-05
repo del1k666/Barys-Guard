@@ -58,6 +58,11 @@ function Body({ event }: { event: EventSummary }) {
             ru.common.none
           )}
         </Fact>
+        {event.artifact_sha256 ? (
+          <Fact label={ru.events.detail.content}>
+            {event.artifact_uploaded ? ru.events.detail.stored : ru.events.detail.notStored}
+          </Fact>
+        ) : null}
       </dl>
 
       <h3 className={page.sectionTitle}>{ru.events.detail.raw}</h3>

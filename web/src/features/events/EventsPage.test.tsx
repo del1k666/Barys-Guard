@@ -24,6 +24,7 @@ const COPY = {
   },
   labels: { process: "unknown" },
   artifact_sha256: "ab".repeat(32),
+  artifact_uploaded: true,
 };
 
 const USB = {
@@ -34,6 +35,7 @@ const USB = {
   severity: "info",
   subject: { drive_letter: "E:", volume: { label: "KINGSTON" } },
   artifact_sha256: null,
+  artifact_uploaded: false,
 };
 
 function eventsPage(items: unknown[], nextCursor: string | null = null) {
@@ -129,6 +131,37 @@ describe("EventsPage", () => {
     expect(within(dialog).getByText("PC\\ivanov")).toBeInTheDocument();
     expect(within(dialog).getByText("ab".repeat(32))).toBeInTheDocument();
     expect(within(dialog).getByText(/"src_path"/)).toBeInTheDocument();
+  });
+
+  it("в панели видно, что содержимое файла загружено на сервер", async () => {
+    setup(eventsPage([COPY]));
+    renderPage(<EventsPage />, route());
+
+    await userEvent.click(await screen.findByRole("button", { name: "Подробнее" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Содержимое на сервере")).toBeInTheDocument();
+    expect(within(dialog).getByText("Загружено")).toBeInTheDocument();
+  });
+
+  it("если хеш есть, а файла нет на сервере, панель говорит «Не загружено»", async () => {
+    setup(eventsPage([{ ...COPY, artifact_uploaded: false }]));
+    renderPage(<EventsPage />, route());
+
+    await userEvent.click(await screen.findByRole("button", { name: "Подробнее" }));
+
+    expect(within(await screen.findByRole("dialog")).getByText("Не загружено")).toBeInTheDocument();
+  });
+
+  it("у события без файла содержимое не упоминается как загруженное или нет", async () => {
+    setup(eventsPage([USB]));
+    renderPage(<EventsPage />, route());
+
+    await userEvent.click(await screen.findByRole("button", { name: "Подробнее" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("Загружено")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Не загружено")).not.toBeInTheDocument();
   });
 
   it("пустой журнал объясняет, что событий нет", async () => {
