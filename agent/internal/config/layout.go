@@ -75,3 +75,8 @@ func WriteAtomic(path string, data []byte, guard platform.Guard) error {
 	}
 	return nil
 }
+
+// Буфер событий и его ключ лежат вне каталога pki: ключ буфера не
+// удостоверяет личность агента, и подмена сертификата его не затрагивает.
+func (l Layout) BufferPath() string    { return filepath.Join(l.Dir, "events.db") }
+func (l Layout) BufferKeyPath() string { return filepath.Join(l.Dir, "buffer.key") }
