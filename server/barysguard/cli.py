@@ -7,6 +7,7 @@ from barysguard.db.models.user import UserRole
 from barysguard.db.session import create_engine_from_url, session_factory
 from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
 from barysguard.pki.provider import get_ca
+from barysguard.services.demo_events import seed_demo_events
 from barysguard.services.event_partitions import ensure_event_partitions
 from barysguard.services.users import create_account, username_taken
 
@@ -102,6 +103,25 @@ async def _ensure_partitions(months_ahead: int) -> int:
     return 0
 
 
+async def _seed_demo_events() -> int:
+    settings = get_settings()
+
+    if not settings.stand:
+        print("seed-demo-events работает только на dev-стенде: задайте BG_STAND=1.")
+        return 1
+
+    engine = create_engine_from_url(settings.database_url)
+    try:
+        async with session_factory(engine)() as session:
+            result = await seed_demo_events(session)
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+    print(f"агентов: {result.agents}, добавлено событий: {result.inserted}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="barysguard-admin")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -118,6 +138,10 @@ def main() -> None:
 
     sub.add_parser("bootstrap-dev", help="начальное состояние dev-стенда (нужен BG_STAND=1)")
 
+    sub.add_parser(
+        "seed-demo-events", help="демонстрационные события file/usb для стенда (нужен BG_STAND=1)"
+    )
+
     partitions = sub.add_parser("ensure-partitions", help="создать разделы таблицы events")
     partitions.add_argument("--months-ahead", type=int, default=2)
 
@@ -129,5 +153,7 @@ def main() -> None:
         raise SystemExit(code)
     if args.command == "bootstrap-dev":
         raise SystemExit(asyncio.run(_bootstrap_dev()))
+    if args.command == "seed-demo-events":
+        raise SystemExit(asyncio.run(_seed_demo_events()))
     if args.command == "ensure-partitions":
         raise SystemExit(asyncio.run(_ensure_partitions(args.months_ahead)))
