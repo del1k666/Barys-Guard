@@ -7,6 +7,7 @@ from barysguard.db.models.user import UserRole
 from barysguard.db.session import create_engine_from_url, session_factory
 from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
 from barysguard.pki.provider import get_ca
+from barysguard.services.event_partitions import ensure_event_partitions
 from barysguard.services.users import create_account, username_taken
 
 
@@ -86,6 +87,21 @@ async def _bootstrap_dev() -> int:
     return 0
 
 
+async def _ensure_partitions(months_ahead: int) -> int:
+    engine = create_engine_from_url(get_settings().database_url)
+    try:
+        async with session_factory(engine)() as session:
+            created = await ensure_event_partitions(session, months_ahead)
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+    print(f"создано разделов: {len(created)}")
+    for name in created:
+        print(f"  {name}")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="barysguard-admin")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -102,6 +118,9 @@ def main() -> None:
 
     sub.add_parser("bootstrap-dev", help="начальное состояние dev-стенда (нужен BG_STAND=1)")
 
+    partitions = sub.add_parser("ensure-partitions", help="создать разделы таблицы events")
+    partitions.add_argument("--months-ahead", type=int, default=2)
+
     args = parser.parse_args()
     if args.command == "create-user":
         code = asyncio.run(
@@ -110,3 +129,5 @@ def main() -> None:
         raise SystemExit(code)
     if args.command == "bootstrap-dev":
         raise SystemExit(asyncio.run(_bootstrap_dev()))
+    if args.command == "ensure-partitions":
+        raise SystemExit(asyncio.run(_ensure_partitions(args.months_ahead)))

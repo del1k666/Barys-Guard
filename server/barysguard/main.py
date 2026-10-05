@@ -1,7 +1,37 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Response, status
 
 from barysguard.core.config import get_settings
 from barysguard.core.logging import setup_logging
+
+logger = logging.getLogger(__name__)
+
+
+async def _ensure_partitions_on_startup() -> None:
+    """Создаёт разделы events на месяц вперёд.
+
+    Недоступная при старте база не должна мешать процессу подняться:
+    /ready сообщит о ней отдельно, а страховочный раздел сохранит события.
+    """
+    from barysguard.db.session import _get_sessionmaker
+    from barysguard.services.event_partitions import ensure_event_partitions
+
+    try:
+        async with _get_sessionmaker()() as session:
+            created = await ensure_event_partitions(session)
+            await session.commit()
+        if created:
+            logger.info("созданы разделы events: %s", ", ".join(created))
+    except Exception:
+        logger.warning("не удалось создать разделы events при старте", exc_info=True)
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    await _ensure_partitions_on_startup()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -13,6 +43,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
+        lifespan=_lifespan,
     )
 
     @app.get("/health", tags=["ops"])
@@ -42,6 +73,7 @@ def create_app() -> FastAPI:
         return {"status": "ok", "database": "ok"}
 
     from barysguard.api.auth import router as auth_router
+    from barysguard.api.events import router as events_router
     from barysguard.api.groups import router as groups_router
     from barysguard.api.overview import router as overview_router
     from barysguard.api.router import router as api_router
@@ -57,6 +89,24 @@ def create_app() -> FastAPI:
     app.include_router(groups_router)
     app.include_router(users_router)
     app.include_router(overview_router)
+    app.include_router(events_router)
+
+    from barysguard.gateway.event_schemas import EventEnvelope
+
+    original_openapi = app.openapi
+
+    def openapi_with_envelope() -> dict:
+        # Тело /gateway/v1/events — NDJSON, FastAPI его схему не знает:
+        # описание конверта добавляется в components вручную.
+        schema = original_openapi()
+        components = schema.setdefault("components", {}).setdefault("schemas", {})
+        if "EventEnvelope" not in components:
+            envelope = EventEnvelope.model_json_schema(ref_template="#/components/schemas/{model}")
+            components.update(envelope.pop("$defs", {}))
+            components["EventEnvelope"] = envelope
+        return schema
+
+    app.openapi = openapi_with_envelope
 
     return app
 

@@ -284,5 +284,27 @@ class Overview(BaseModel):
     certificates_expiring: int
     tokens_active: int
     commands: CommandCounts
+    events_24h: int
     agent_versions: list[VersionCount]
     operating_systems: list[VersionCount]
+
+
+class EventSummary(BaseModel):
+    event_id: uuid.UUID
+    agent_id: uuid.UUID
+    hostname: str
+    occurred_at: datetime
+    received_at: datetime
+    channel: str
+    action: str
+    severity: str
+    actor: dict[str, Any]
+    process: dict[str, Any]
+    subject: dict[str, Any]
+    labels: dict[str, Any]
+    artifact_sha256: str | None
+
+
+class EventPage(BaseModel):
+    items: list[EventSummary]
+    next_cursor: str | None

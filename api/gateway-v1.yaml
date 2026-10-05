@@ -49,7 +49,8 @@ paths:
       tags:
       - gateway
       summary: Get Ca Certificate
-      description: Сертификат удостоверяющего центра. Без аутентификации — он публичен по определению.
+      description: Сертификат удостоверяющего центра. Без аутентификации — он публичен
+        по определению.
       operationId: get_ca_certificate_gateway_v1_ca_get
       responses:
         '200':
@@ -188,13 +189,34 @@ paths:
                 type: object
                 additionalProperties:
                   type: string
-                title: Response Submit Command Result Gateway V1 Commands  Command Id  Result Post
+                title: Response Submit Command Result Gateway V1 Commands  Command
+                  Id  Result Post
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /gateway/v1/events:
+    post:
+      tags:
+      - gateway
+      summary: Ingest Events
+      description: Пакет событий в NDJSON, одна строка — одно событие. Идемпотентно.
+      operationId: ingest_events_gateway_v1_events_post
+      requestBody:
+        content:
+          application/x-ndjson:
+            schema:
+              $ref: '#/components/schemas/EventEnvelope'
+        required: true
+      responses:
+        '202':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventsResult'
   /api/v1/auth/login:
     post:
       tags:
@@ -268,7 +290,8 @@ paths:
       tags:
       - auth
       summary: List Sessions
-      description: 'Действующие входы оператора: где именно открыта консоль от его имени.'
+      description: 'Действующие входы оператора: где именно открыта консоль от его
+        имени.'
       operationId: list_sessions_api_v1_auth_sessions_get
       responses:
         '200':
@@ -510,7 +533,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/CertificateSummary'
-                title: Response List Agent Certificates Api V1 Agents  Agent Id  Certificates Get
+                title: Response List Agent Certificates Api V1 Agents  Agent Id  Certificates
+                  Get
         '422':
           description: Validation Error
           content:
@@ -959,7 +983,8 @@ paths:
       tags:
       - api
       summary: Issue Api Key
-      description: Выдаёт ключ для автоматизации. Прежний ключ учётной записи перестаёт работать.
+      description: Выдаёт ключ для автоматизации. Прежний ключ учётной записи перестаёт
+        работать.
       operationId: issue_api_key_api_v1_users__user_id__api_key_post
       parameters:
       - name: user_id
@@ -1169,6 +1194,95 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditEntry'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/events:
+    get:
+      tags:
+      - api
+      summary: List Events
+      description: События от новых к старым. Оператор видит только свою область.
+      operationId: list_events_api_v1_events_get
+      parameters:
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+      - name: channel
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Channel
+      - name: action
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Action
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Severity
+      - name: since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Since
+      - name: until
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Until
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventPage'
         '422':
           description: Validation Error
           content:
@@ -1968,6 +2082,109 @@ components:
       - revoked_at
       - state
       title: EnrollmentTokenSummary
+    EventPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/EventSummary'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: EventPage
+    EventSummary:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        hostname:
+          type: string
+          title: Hostname
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        received_at:
+          type: string
+          format: date-time
+          title: Received At
+        channel:
+          type: string
+          title: Channel
+        action:
+          type: string
+          title: Action
+        severity:
+          type: string
+          title: Severity
+        actor:
+          additionalProperties: true
+          type: object
+          title: Actor
+        process:
+          additionalProperties: true
+          type: object
+          title: Process
+        subject:
+          additionalProperties: true
+          type: object
+          title: Subject
+        labels:
+          additionalProperties: true
+          type: object
+          title: Labels
+        artifact_sha256:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Artifact Sha256
+      type: object
+      required:
+      - event_id
+      - agent_id
+      - hostname
+      - occurred_at
+      - received_at
+      - channel
+      - action
+      - severity
+      - actor
+      - process
+      - subject
+      - labels
+      - artifact_sha256
+      title: EventSummary
+    EventsResult:
+      properties:
+        accepted:
+          type: integer
+          title: Accepted
+        duplicates:
+          type: integer
+          title: Duplicates
+        rejected:
+          items:
+            $ref: '#/components/schemas/RejectedLine'
+          type: array
+          title: Rejected
+      type: object
+      required:
+      - accepted
+      - duplicates
+      - rejected
+      title: EventsResult
     FleetCommand:
       properties:
         id:
@@ -2247,6 +2464,9 @@ components:
           title: Tokens Active
         commands:
           $ref: '#/components/schemas/CommandCounts'
+        events_24h:
+          type: integer
+          title: Events 24H
         agent_versions:
           items:
             $ref: '#/components/schemas/VersionCount'
@@ -2263,6 +2483,7 @@ components:
       - certificates_expiring
       - tokens_active
       - commands
+      - events_24h
       - agent_versions
       - operating_systems
       title: Overview
@@ -2290,6 +2511,19 @@ components:
       - payload
       - expires_at
       title: QueuedCommand
+    RejectedLine:
+      properties:
+        line:
+          type: integer
+          title: Line
+        reason:
+          type: string
+          title: Reason
+      type: object
+      required:
+      - line
+      - reason
+      title: RejectedLine
     RenewRequest:
       properties:
         csr_pem:
@@ -2589,3 +2823,104 @@ components:
       - value
       - count
       title: VersionCount
+    Channel:
+      enum:
+      - file
+      - usb
+      - clipboard
+      - network
+      - print
+      - process
+      - agent
+      title: Channel
+      type: string
+    EventArtifact:
+      properties:
+        sha256:
+          pattern: ^[0-9a-f]{64}$
+          title: Sha256
+          type: string
+        size:
+          minimum: 0
+          title: Size
+          type: integer
+        uploaded:
+          default: false
+          title: Uploaded
+          type: boolean
+      required:
+      - sha256
+      - size
+      title: EventArtifact
+      type: object
+    Severity:
+      enum:
+      - info
+      - low
+      - medium
+      - high
+      - critical
+      title: Severity
+      type: string
+    EventEnvelope:
+      description: 'Конверт события, раздел 9 основной спеки.
+
+
+        Поля, которых здесь нет, игнорируются (extra="ignore"). Это сознательно
+
+        касается agent_id: личность агента определяет сертификат, а присланное
+
+        в теле значение позволило бы скомпрометированному агенту писать события
+
+        от чужого имени.'
+      properties:
+        event_id:
+          format: uuid
+          title: Event Id
+          type: string
+        schema_version:
+          title: Schema Version
+          type: integer
+        occurred_at:
+          format: date-time
+          title: Occurred At
+          type: string
+        channel:
+          $ref: '#/components/schemas/Channel'
+        action:
+          maxLength: 64
+          minLength: 1
+          title: Action
+          type: string
+        severity_hint:
+          $ref: '#/components/schemas/Severity'
+          default: info
+        actor:
+          additionalProperties: true
+          title: Actor
+          type: object
+        process:
+          additionalProperties: true
+          title: Process
+          type: object
+        subject:
+          additionalProperties: true
+          title: Subject
+          type: object
+        labels:
+          additionalProperties: true
+          title: Labels
+          type: object
+        artifact:
+          anyOf:
+          - $ref: '#/components/schemas/EventArtifact'
+          - type: 'null'
+          default: null
+      required:
+      - event_id
+      - schema_version
+      - occurred_at
+      - channel
+      - action
+      title: EventEnvelope
+      type: object
