@@ -21,6 +21,8 @@ const (
 	backoffBase  = 5 * time.Second
 	backoffMax   = 5 * time.Minute
 	maxChunk     = 1 << 20
+	// Нижняя граница чанка при низкой скорости: меньше — слишком много запросов.
+	minChunkBytes = 64 << 10
 	// Сколько раз за одну загрузку принять смещение сервера, прежде чем
 	// отложить файл: сервер, отвечающий 409 вечно, не должен держать воркер.
 	maxRepositions = 5
@@ -151,10 +153,7 @@ func (w *Worker) upload(ctx context.Context, entry Entry) error {
 		return nil
 	}
 
-	chunk := open.ChunkSize
-	if chunk <= 0 || chunk > maxChunk {
-		chunk = maxChunk
-	}
+	chunk := chunkFor(open.ChunkSize, w.config().UploadBytesPerSecond)
 	source := &chunkSource{store: w.store, entry: entry}
 	defer source.close()
 
@@ -203,6 +202,21 @@ func (w *Worker) upload(ctx context.Context, entry Entry) error {
 		}
 		offset = resp.ReceivedBytes
 	}
+}
+
+// chunkFor выбирает размер чанка: не больше серверного и 1 МиБ, и не больше
+// четверти секунды при заданной скорости (но не меньше minChunkBytes). Иначе на
+// медленном канале чанк не успевает за таймаут запроса, смещение не растёт и
+// каждый повтор впустую занимает канал. Докачка по смещению допускает любой размер.
+func chunkFor(server, bps int64) int64 {
+	chunk := int64(maxChunk)
+	if server > 0 {
+		chunk = min(chunk, server)
+	}
+	if bps > 0 {
+		chunk = min(chunk, max(minChunkBytes, bps/4))
+	}
+	return chunk
 }
 
 // pace растягивает отправку до upload_bytes_per_second: фоновая загрузка не

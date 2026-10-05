@@ -436,3 +436,43 @@ func TestOtherClientErrorsStillDrop(t *testing.T) {
 		}
 	}
 }
+
+// Чанк обязан укладываться в ~четверть секунды при заданной скорости: на
+// медленном канале мегабайтный чанк не успевает за таймаут запроса клиента.
+func TestChunkIsCappedByTheConfiguredSpeed(t *testing.T) {
+	cases := []struct {
+		name    string
+		bps     int64
+		size    int
+		wantMax int
+	}{
+		{"128KiB/s", 128 << 10, 300 << 10, 64 << 10},
+		{"floor at 1KiB/s", 1 << 10, 200 << 10, 64 << 10},
+		{"default", DefaultConfig().UploadBytesPerSecond, 3 << 20, 1 << 20},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newWorkerHarness(t)
+			cfg := DefaultConfig()
+			cfg.UploadBytesPerSecond = tc.bps
+			h.worker.SetConfig(cfg)
+			data := randomBytes(tc.size)
+			stage(t, h.store, data)
+
+			h.worker.Pass(context.Background())
+
+			if !bytes.Equal(h.api.received, data) {
+				t.Fatalf("сервер получил %d байт из %d", len(h.api.received), len(data))
+			}
+			if want := max(int64(minChunkBytes), tc.bps/4); int64(h.api.maxChunk) > want {
+				t.Fatalf("чанк %d байт больше max(64 КиБ, bps/4) = %d", h.api.maxChunk, want)
+			}
+			if h.api.maxChunk > tc.wantMax {
+				t.Fatalf("чанк %d байт, предел %d", h.api.maxChunk, tc.wantMax)
+			}
+			if tc.bps < 4*minChunkBytes && h.api.maxChunk != minChunkBytes {
+				t.Fatalf("чанк %d байт, при низкой скорости ожидалось %d", h.api.maxChunk, minChunkBytes)
+			}
+		})
+	}
+}
