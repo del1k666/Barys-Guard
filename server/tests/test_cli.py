@@ -98,3 +98,20 @@ async def test_cli_seed_rules_runs_twice_without_failing(
 
     rules = (await session.execute(select(Rule.key))).scalars().all()
     assert sorted(rules) == ["card", "iin_bin", "markings"]
+
+
+async def test_cli_worker_uses_the_structured_json_logging(monkeypatch) -> None:
+    # Поля extra= (task_id, sha256, attempt, count) видны только в JSON-журнале сервера.
+    from barysguard import cli
+    from barysguard.services.inspection import worker
+
+    levels: list[str] = []
+    monkeypatch.setattr(cli, "setup_logging", levels.append)
+
+    async def finished(settings, stop) -> None:
+        return None
+
+    monkeypatch.setattr(worker, "run_worker", finished)
+
+    assert await cli._worker() == 0
+    assert len(levels) == 1

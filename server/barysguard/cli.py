@@ -1,11 +1,11 @@
 import argparse
 import asyncio
 import contextlib
-import logging
 import signal
 import uuid
 
 from barysguard.core.config import get_settings
+from barysguard.core.logging import setup_logging
 from barysguard.db.models.user import UserRole
 from barysguard.db.session import create_engine_from_url, session_factory
 from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
@@ -156,9 +156,8 @@ async def _worker() -> int:
     from barysguard.services.inspection.worker import WorkerConfigError, run_worker
 
     settings = get_settings()
-    logging.basicConfig(
-        level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-    )
+    # Тот же JSON-журнал, что у API: поля extra= (task_id, sha256, attempt) не теряются.
+    setup_logging(settings.log_level)
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
