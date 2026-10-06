@@ -7,6 +7,7 @@ import { AgentListPage } from "./features/agents/AgentListPage";
 import { ChangePasswordPage } from "./features/auth/ChangePasswordPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { EventsPage } from "./features/events/EventsPage";
+import { IncidentsPage } from "./features/incidents/IncidentsPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
 
 export function App() {
@@ -24,6 +25,7 @@ export function App() {
         <Route path="agents" element={<AgentListPage />} />
         <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="events" element={<EventsPage />} />
+        <Route path="incidents" element={<IncidentsPage />} />
         <Route path="password"element={<ChangePasswordPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
