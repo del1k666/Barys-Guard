@@ -61,9 +61,10 @@ $tok = (Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/v1/enrollm
    `subject.dst_path` (куда), `artifact.sha256` и, если процесс ещё держал файл
    открытым, `process` (чаще всего `explorer.exe`). Источник находится по
    совпадению хеша с файлом, который агент видел в наблюдаемых папках; если
-   файл лежал вне наблюдаемых папок, будет `file/create` на флешке без `src_path`
-   (`severity=medium`).
-4. **Файл создан прямо на флешке.** `file/create`, `severity=medium`.
+   файл лежал вне наблюдаемых папок, событие всё равно `file/copy`
+   (`severity=high`), но без `src_path` и с `labels.source = "unknown"`.
+4. **Файл создан или изменён прямо на флешке.** Любая запись на внешний том
+   (создание или изменение) — `file/copy`, `severity=high`, источник неизвестен.
 5. **Извлечение флешки.** `usb/unmount`. Смена флешки в той же букве даёт
    `unmount` и `mount`.
 6. **Большой файл.** Файл больше `max_hash_bytes` (по умолчанию 256 МиБ)

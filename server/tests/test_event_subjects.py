@@ -23,6 +23,7 @@ def _file(**subject) -> dict:
         ("modify", _file(size_bytes=10)),
         ("delete", _file()),
         ("rename", _file(old_path="E:\\old.xlsx")),
+        ("copy", _file()),  # источник неизвестен
         ("copy", _file(src_path="C:\\Users\\u\\Documents\\report.xlsx")),
     ],
 )
@@ -39,7 +40,6 @@ def test_valid_file_subjects(action: str, subject: dict) -> None:
         ("create", {"dst_path": "E:\\x"}),
         ("create", {"dst_path": "E:\\x", "volume": {"type": "cloud"}}),
         ("rename", _file()),
-        ("copy", _file()),
         ("create", _file(size_bytes=-1)),
         ("create", _file(size_bytes=True)),
     ],

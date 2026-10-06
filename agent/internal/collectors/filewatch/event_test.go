@@ -48,8 +48,7 @@ func TestSeverityByLocationAndAction(t *testing.T) {
 		vol    volumes.Volume
 		want   string
 	}{
-		{ActionCreate, removable, events.SeverityMedium},
-		{ActionModify, removable, events.SeverityMedium},
+		{ActionCopy, removable, events.SeverityHigh},
 		{ActionDelete, removable, events.SeverityInfo},
 		{ActionRename, removable, events.SeverityInfo},
 		{ActionCreate, fixed, events.SeverityInfo},

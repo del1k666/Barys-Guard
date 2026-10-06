@@ -14,17 +14,11 @@ type EventInput struct {
 	Actor, Process            map[string]any
 }
 
-// severityFor: подсказка агента. Копирование известного файла на внешний том —
-// главный сценарий утечки; запись неизвестного — повод присмотреться.
+// severityFor: подсказка агента. Запись файла на внешний том (copy) — главный
+// сценарий утечки.
 func severityFor(action Action, vol volumes.Volume) string {
-	if vol.Type != volumes.TypeRemovable {
-		return events.SeverityInfo
-	}
-	switch action {
-	case ActionCopy:
+	if vol.Type == volumes.TypeRemovable && action == ActionCopy {
 		return events.SeverityHigh
-	case ActionCreate, ActionModify:
-		return events.SeverityMedium
 	}
 	return events.SeverityInfo
 }
@@ -40,6 +34,10 @@ func BuildEvent(in EventInput) (events.Envelope, error) {
 	if in.Action == ActionCopy && in.SrcPath != "" {
 		subject["src_path"] = in.SrcPath
 	}
+	labels := map[string]any{}
+	if in.Action == ActionCopy && in.SrcPath == "" {
+		labels["source"] = "unknown"
+	}
 	if in.Action == ActionRename && in.OldPath != "" {
 		subject["old_path"] = in.OldPath
 	}
@@ -49,7 +47,6 @@ func BuildEvent(in EventInput) (events.Envelope, error) {
 		return events.Envelope{}, err
 	}
 
-	labels := map[string]any{}
 	switch in.Hash.Status {
 	case HashOK:
 		env.Artifact = &events.Artifact{SHA256: in.Hash.SHA256, Size: in.Hash.Size, Uploaded: false}

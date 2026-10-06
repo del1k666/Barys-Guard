@@ -27,8 +27,6 @@ def _file_ok(action: str, subject: dict[str, Any]) -> bool:
         return False
     if not _text(subject.get("dst_path")) or not _volume_ok(subject.get("volume")):
         return False
-    if action == "copy" and not _text(subject.get("src_path")):
-        return False
     if action == "rename" and not _text(subject.get("old_path")):
         return False
     size = subject.get("size_bytes")

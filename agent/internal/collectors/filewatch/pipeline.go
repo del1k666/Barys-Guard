@@ -160,11 +160,16 @@ func (p *Pipeline) emit(settled Settled, now time.Time) {
 		}
 	}
 
-	if in.Hash.Status == HashOK && in.Hash.Size >= minIndexedSize &&
-		(settled.Action == ActionCreate || settled.Action == ActionModify) {
+	written := settled.Action == ActionCreate || settled.Action == ActionModify
+	// Любая запись на внешний том — отправка на USB; источник известен, только
+	// если агент видел тот же файл в наблюдаемой папке.
+	if removable && written {
+		in.Action = ActionCopy
+	}
+	if in.Hash.Status == HashOK && in.Hash.Size >= minIndexedSize && written {
 		if removable {
 			if source, ok := p.idx.Lookup(in.Hash.SHA256, in.Hash.Size, now); ok && source != settled.Path {
-				in.Action, in.SrcPath = ActionCopy, source
+				in.SrcPath = source
 			}
 		} else {
 			p.idx.Put(in.Hash.SHA256, in.Hash.Size, settled.Path, now)

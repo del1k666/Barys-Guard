@@ -106,18 +106,34 @@ func TestFileCopiedToAFlashDriveIsReportedAsCopyWithItsSource(t *testing.T) {
 	}
 }
 
-func TestUnseenFileOnAFlashDriveIsAnOrdinaryCreate(t *testing.T) {
+// Любая запись на внешний том — отправка на USB, даже если источник неизвестен.
+func TestUnseenFileOnAFlashDriveIsACopyWithUnknownSource(t *testing.T) {
 	h := newHarness(t, nil)
 	h.files[dst] = "что-то, чего агент не видел"
 
 	h.pipeline.Handle(Raw{Kind: Created, Path: dst})
 	h.advance(2 * time.Second)
 
-	if len(h.emitted) != 1 || h.emitted[0].Action != "create" || h.emitted[0].SeverityHint != events.SeverityMedium {
+	if len(h.emitted) != 1 || h.emitted[0].Action != "copy" || h.emitted[0].SeverityHint != events.SeverityHigh {
 		t.Fatalf("события: %+v", h.emitted)
 	}
 	if _, has := h.emitted[0].Subject["src_path"]; has {
 		t.Fatalf("src_path без источника: %+v", h.emitted[0].Subject)
+	}
+	if h.emitted[0].Labels["source"] != "unknown" {
+		t.Fatalf("метка источника: %+v", h.emitted[0].Labels)
+	}
+}
+
+func TestModifyOnAFlashDriveIsACopyToo(t *testing.T) {
+	h := newHarness(t, nil)
+	h.files[dst] = "новая версия"
+
+	h.pipeline.Handle(Raw{Kind: Modified, Path: dst})
+	h.advance(2 * time.Second)
+
+	if len(h.emitted) != 1 || h.emitted[0].Action != "copy" || h.emitted[0].SeverityHint != events.SeverityHigh {
+		t.Fatalf("события: %+v", h.emitted)
 	}
 }
 
@@ -280,8 +296,8 @@ func TestTinyFilesAreNeverTreatedAsCopySources(t *testing.T) {
 	h.advance(2 * time.Second)
 
 	for _, e := range h.emitted {
-		if e.Action == "copy" {
-			t.Fatalf("мелкий файл принят за копию: %+v", e.Subject)
+		if _, has := e.Subject["src_path"]; has {
+			t.Fatalf("у мелкого файла найден источник: %+v", e.Subject)
 		}
 	}
 }
