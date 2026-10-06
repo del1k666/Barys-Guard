@@ -621,7 +621,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
   - `class RuleError(Exception)`: `.status_code: int`, `.message: str`.
   - `@dataclass(frozen=True) RuleView`: `id, key, kind, title, builtin, enabled, version, weight, cap, pattern, ignore_case, terms_count, updated_at`.
   - `@dataclass(frozen=True) TestOutcome`: `ok: bool, error: str | None, count: int, matches: list[tuple[int, int]]`.
-  - `test_rule(kind, *, pattern, ignore_case, terms, text, max_pattern, max_match, max_text) -> TestOutcome`
+  - `run_rule_test(kind, *, pattern, ignore_case, terms, text, max_pattern, max_match, max_text) -> TestOutcome`
   - `async list_rules(session) -> list[RuleView]`, `async get_rule(session, rule_id) -> RuleView`
   - `async create_rule(session, settings, *, kind, title, weight, cap, pattern, ignore_case, test_text, terms) -> RuleView`
   - `async update_rule(session, settings, rule_id, fields: dict[str, Any]) -> tuple[RuleView, dict[str, Any]]` — второй элемент: изменения для аудита `{поле: [было, стало]}`
@@ -650,7 +650,7 @@ from barysguard.services.inspection.rule_admin import (
     list_rules,
     list_terms,
     list_versions,
-    test_rule,
+    run_rule_test,
     update_rule,
 )
 from barysguard.services.inspection.rules import load_ruleset, seed_rules
@@ -856,15 +856,15 @@ async def test_unknown_rule_is_404(app_client, session) -> None:
 
 
 def test_test_rule_reports_positions_and_errors() -> None:
-    ok = test_rule(
+    ok = run_rule_test(
         "regex", pattern=r"\d{3}", ignore_case=False, terms=None, text="a 123 b 456",
         max_pattern=500, max_match=200, max_text=20000,
     )
-    bad = test_rule(
+    bad = run_rule_test(
         "regex", pattern="(?=a)b", ignore_case=False, terms=None, text="x",
         max_pattern=500, max_match=200, max_text=20000,
     )
-    words = test_rule(
+    words = run_rule_test(
         "dictionary", pattern=None, ignore_case=False, terms=["секретно"], text="Это СЕКРЕТНО!",
         max_pattern=500, max_match=200, max_text=20000,
     )
@@ -1028,7 +1028,7 @@ def _term_positions(terms: list[str], text: str) -> list[tuple[int, int]]:
     return result
 
 
-def test_rule(
+def run_rule_test(
     kind: str,
     *,
     pattern: str | None,
@@ -1720,14 +1720,14 @@ async def list_rules(
 
 
 @router.post("/rules/test", response_model=RuleTestResponse)
-async def test_rule(
+async def run_rule_test(
     payload: RuleTestRequest,
     _: User = Depends(require_admin),
     settings: Settings = Depends(get_settings),
 ) -> RuleTestResponse:
     """Проверка на тексте оператора; текст не сохраняется и в логи не попадает."""
     try:
-        outcome = rule_admin.test_rule(
+        outcome = rule_admin.run_rule_test(
             payload.kind,
             pattern=payload.pattern,
             ignore_case=payload.ignore_case,
