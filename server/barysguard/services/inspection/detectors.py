@@ -23,6 +23,13 @@ def normalize(text: str) -> str:
     return text.lower().replace("ё", "е")
 
 
+def mask_tail(value: str, keep: int = 2) -> str:
+    """Маска образца: все символы, кроме последних `keep`, заменяются `*`."""
+    if len(value) <= keep:
+        return "*" * len(value)
+    return "*" * (len(value) - keep) + value[-keep:]
+
+
 def kz_control_ok(number: str) -> bool:
     """Контрольный разряд ИИН/БИН: веса 1..11, при остатке 10 — веса 3..11,1,2."""
     head = [int(char) for char in number[:11]]
@@ -155,25 +162,37 @@ class CardDetector:
         return None
 
 
+_YO_CLASS = "[еёЕЁ]"
+
+
+def _term_pattern(term: str) -> str:
+    """Шаблон одного термина: е и ё взаимозаменяемы, пробелы между словами гибкие."""
+    words = []
+    for word in term.split():
+        words.append("".join(_YO_CLASS if ch in "еёЕЁ" else re.escape(ch) for ch in word))
+    # Между словами допускается до четырёх пробельных символов подряд.
+    return r"\s{1,4}".join(words)
+
+
 class DictionaryDetector:
     def __init__(self, key: str, terms: Iterable[str]) -> None:
         self.key = key
-        cleaned = sorted(
-            {normalize(" ".join(term.split())) for term in terms if term.strip()},
-            key=len,
-            reverse=True,
-        )
-        # Пробелы между словами допускают до четырёх пробельных символов подряд.
-        self.max_length = max((len(term) + 3 * term.count(" ") for term in cleaned), default=0) + 2
-        parts = [r"\s{1,4}".join(re.escape(word) for word in term.split(" ")) for term in cleaned]
-        body = "|".join(parts) if parts else "(?!)"
-        self.pattern = re.compile(rf"(?<!\w)(?:{body})(?!\w)")
+        unique: dict[str, str] = {}
+        for term in terms:
+            cleaned = " ".join(term.split())
+            if cleaned:
+                unique.setdefault(normalize(cleaned), cleaned)
+        ordered = sorted(unique.values(), key=len, reverse=True)
+        self.max_length = max((len(t) + 3 * t.count(" ") for t in ordered), default=0) + 2
+        body = "|".join(_term_pattern(term) for term in ordered) if ordered else "(?!)"
+        # Регистр и ё/е решает сам детектор: текст сканер не нормализует.
+        self.pattern = re.compile(rf"(?<!\w)(?:{body})(?!\w)", re.IGNORECASE)
 
     def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
         for match in self.pattern.finditer(data, start):
             if match.start() >= end:
                 return
-            yield " ".join(match.group().split()), match.end()
+            yield normalize(" ".join(match.group().split())), match.end()
 
 
 class ContentScanner:
@@ -184,6 +203,7 @@ class ContentScanner:
     остальное переходит в хвост вместе с одним символом контекста, чтобы
     проверка «не часть более длинного числа» видела предыдущий символ. Каждый детектор
     продолжает поиск с конца своего последнего совпадения, даже если оно заходит в хвост.
+    Текст не нормализуется: регистр учитывают сами детекторы.
     """
 
     def __init__(self, detectors: Sequence[Detector]) -> None:
@@ -197,7 +217,7 @@ class ContentScanner:
         self._findings = {d.key: Finding() for d in self._detectors}
 
     def feed(self, chunk: str) -> None:
-        data = self._carry + normalize(chunk)
+        data = self._carry + chunk
         owned_end = len(data) - self._overlap
         if owned_end <= self._context:
             self._carry = data
