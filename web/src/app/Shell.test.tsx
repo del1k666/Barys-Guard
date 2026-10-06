@@ -25,6 +25,7 @@ describe("Shell", () => {
     expect(await screen.findByText("содержимое")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Обзор" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Агенты" })).toHaveAttribute("href", "/agents");
+    expect(screen.getByRole("link", { name: "Инциденты" })).toHaveAttribute("href", "/incidents");
     expect(screen.getByText("admin")).toBeInTheDocument();
     expect(screen.getByText("Администратор")).toBeInTheDocument();
   });

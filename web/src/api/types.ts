@@ -43,4 +43,12 @@ export type Overview = Schemas["Overview"];
 export type EventSummary = Schemas["EventSummary"];
 export type EventPage = Schemas["EventPage"];
 
+export type IncidentSummary = Schemas["IncidentSummary"];
+export type IncidentPage = Schemas["IncidentPage"];
+export type IncidentDetail = Schemas["IncidentDetail"];
+export type IncidentMatch = Schemas["IncidentMatch"];
+export type IncidentEventRef = Schemas["IncidentEventRef"];
+export type IncidentStatusUpdate = Schemas["IncidentStatusUpdate"];
+export type VerdictSummary = Schemas["VerdictSummary"];
+
 export type AgentStatus = "pending" | "active" | "offline" | "quarantined" | "revoked";

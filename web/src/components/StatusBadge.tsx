@@ -45,3 +45,27 @@ export function SeverityBadge({ severity }: { severity: string }) {
     </Badge>
   );
 }
+
+const INCIDENT_TONES: Record<string, Tone> = {
+  open: "danger",
+  acknowledged: "warn",
+  closed: "neutral",
+};
+
+export function IncidentStatusBadge({ status }: { status: string }) {
+  return (
+    <Badge tone={INCIDENT_TONES[status] ?? "neutral"}>{ru.status.incident[status] ?? status}</Badge>
+  );
+}
+
+const VERDICT_TONES: Record<string, Tone> = {
+  flagged: "danger",
+  clean: "ok",
+  not_inspected: "neutral",
+};
+
+export function VerdictBadge({ status }: { status: string }) {
+  return (
+    <Badge tone={VERDICT_TONES[status] ?? "neutral"}>{ru.status.verdict[status] ?? status}</Badge>
+  );
+}
