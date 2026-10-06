@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from barysguard.db.models.event import Event
 from barysguard.gateway.event_schemas import MAX_EVENT_BYTES, SCHEMA_VERSION, EventEnvelope
 from barysguard.services.event_subjects import subject_is_valid
+from barysguard.services.inspection.queue import enqueue_new_events
 
 # Параметров привязки у asyncpg не больше 32767: пакет в 10000 событий по 13
 # колонок в один INSERT не поместится, поэтому вставка идёт порциями.
@@ -145,12 +146,22 @@ async def store_events(
     ]
 
     inserted = 0
+    inserted_keys: list[tuple[datetime, uuid.UUID]] = []
     for start in range(0, len(rows), INSERT_CHUNK):
         statement = (
             pg_insert(Event)
             .values(rows[start : start + INSERT_CHUNK])
             .on_conflict_do_nothing(index_elements=["occurred_at", "event_id"])
-            .returning(Event.event_id)
+            .returning(Event.occurred_at, Event.event_id)
         )
-        inserted += len((await session.execute(statement)).all())
+        returned = (await session.execute(statement)).all()
+        inserted += len(returned)
+        inserted_keys.extend((row.occurred_at, row.event_id) for row in returned)
+
+    # Артефакт мог быть загружен раньше события: тогда загрузка уже прошла
+    # и ставить в очередь некому, кроме приёма события.
+    with_artifact = {
+        (row["occurred_at"], row["event_id"]) for row in rows if row["artifact_sha256"]
+    }
+    await enqueue_new_events(session, [key for key in inserted_keys if key in with_artifact])
     return inserted

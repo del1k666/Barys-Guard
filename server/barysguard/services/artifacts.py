@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from barysguard.core.config import Settings
 from barysguard.db.models.agent import Agent
 from barysguard.db.models.artifact import Artifact, UploadSession
+from barysguard.services.inspection.queue import enqueue_for_artifact
 from barysguard.storage.artifact_store import FileArtifactStore
 
 
@@ -237,6 +238,9 @@ async def _finalize(
     await session.delete(upload)
     # Ошибки БД всплывают здесь, пока временный файл ещё на месте.
     await session.flush()
+    if known is None:
+        # Новый артефакт: события, пришедшие раньше содержимого, ждали именно этого.
+        await enqueue_for_artifact(session, digest)
     return ChunkResult(size, "complete", leftover=path)
 
 
