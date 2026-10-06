@@ -352,3 +352,33 @@ def test_a_container_name_with_text_content_is_an_error() -> None:
     assert _scan("a.docx", f"ИИН {IIN}".encode()).status == "error"
     assert _scan("a.pdf", f"ИИН {IIN}".encode()).status == "error"
     assert _scan("a.docx", b"").status == "error"
+
+
+# --- Переносы и табуляции внутри абзаца -----------------------------------------
+
+IIN_TWO = "850612412340"
+
+
+@pytest.mark.parametrize("separator", ["<w:br/>", "<w:cr/>", "<w:tab/>"])
+def test_docx_line_break_or_tab_inside_a_paragraph_separates_numbers(separator: str) -> None:
+    document = (
+        f'<?xml version="1.0"?><w:document xmlns:w="{W}"><w:body><w:p><w:r>'
+        f"<w:t>{IIN}</w:t>{separator}<w:t>{IIN_TWO}</w:t>"
+        f"</w:r></w:p></w:body></w:document>"
+    )
+
+    outcome = _scan("list.docx", _zip({"word/document.xml": document}))
+
+    assert outcome.status == "ok" and outcome.findings["iin_bin"]["count"] == 2
+
+
+def test_pptx_line_break_inside_a_paragraph_separates_numbers() -> None:
+    slide = (
+        f'<?xml version="1.0"?><p:sld xmlns:p="urn:p" xmlns:a="{A}"><a:p>'
+        f"<a:r><a:t>{IIN}</a:t></a:r><a:br/><a:r><a:t>{IIN_TWO}</a:t></a:r>"
+        f"</a:p></p:sld>"
+    )
+
+    outcome = _scan("deck.pptx", _zip({"ppt/slides/slide1.xml": slide}))
+
+    assert outcome.status == "ok" and outcome.findings["iin_bin"]["count"] == 2

@@ -209,11 +209,18 @@ def _xml_events(raw: bytes) -> Iterator[ET.Element]:
         raise ExtractFailure("error") from None
 
 
+# w:br, w:cr, w:tab (Word) и a:br (PowerPoint); в общих строках Excel безвредны.
+_INLINE_BREAKS = {"br": "\n", "cr": "\n", "tab": "\t"}
+
+
 def _text_runs(raw: bytes, text_tag: str, break_tag: str) -> Iterator[str]:
     for element in _xml_events(raw):
         name = _local(element.tag)
         if name == text_tag and element.text:
             yield element.text
+        elif name in _INLINE_BREAKS:
+            # Перенос строки или табуляция внутри абзаца разделяют числа, а не склеивают их.
+            yield _INLINE_BREAKS[name]
         elif name == break_tag:
             yield "\n"
             element.clear()
