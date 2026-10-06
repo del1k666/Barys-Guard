@@ -289,6 +289,12 @@ class Overview(BaseModel):
     operating_systems: list[VersionCount]
 
 
+class VerdictSummary(BaseModel):
+    status: str
+    score: int
+    severity: str
+
+
 class EventSummary(BaseModel):
     event_id: uuid.UUID
     agent_id: uuid.UUID
@@ -304,8 +310,54 @@ class EventSummary(BaseModel):
     labels: dict[str, Any]
     artifact_sha256: str | None
     artifact_uploaded: bool = False
+    verdict: VerdictSummary | None = None
 
 
 class EventPage(BaseModel):
     items: list[EventSummary]
     next_cursor: str | None
+
+
+class IncidentSummary(BaseModel):
+    id: uuid.UUID
+    agent_id: uuid.UUID
+    hostname: str
+    artifact_sha256: str
+    title: str
+    severity: str
+    score: int
+    status: str
+    events_count: int
+    first_event_at: datetime
+    last_event_at: datetime
+    assignee: uuid.UUID | None = None
+
+
+class IncidentPage(BaseModel):
+    items: list[IncidentSummary]
+    next_cursor: str | None
+
+
+class IncidentMatch(BaseModel):
+    rule_key: str
+    count: int
+    points: int
+    samples: list[str]
+
+
+class IncidentEventRef(BaseModel):
+    event_id: uuid.UUID
+    occurred_at: datetime
+    action: str
+    severity: str
+    dst_path: str | None = None
+
+
+class IncidentDetail(IncidentSummary):
+    verdict: VerdictSummary | None = None
+    matches: list[IncidentMatch]
+    events: list[IncidentEventRef]
+
+
+class IncidentStatusUpdate(BaseModel):
+    status: Literal["acknowledged", "closed"]

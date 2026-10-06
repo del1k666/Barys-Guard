@@ -1,0 +1,195 @@
+"""GET/PATCH /api/v1/incidents и поле verdict в /api/v1/events."""
+
+import uuid
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select
+
+from barysguard.db.models.agent import AgentGroup
+from barysguard.db.models.audit import AuditLog
+from barysguard.db.models.event import Event
+from barysguard.db.models.inspection import Incident
+from barysguard.db.models.user import UserRole
+from barysguard.services.inspection.incidents import apply_verdict
+from barysguard.services.inspection.verdicts import write_verdict
+from tests.helpers import enroll_agent, login_as
+
+SHA = "ab" * 32
+MATCHES = [
+    {
+        "rule_key": "iin_bin",
+        "rule_version_id": "v1",
+        "count": 2,
+        "points": 40,
+        "samples": ["**********17"],
+    }
+]
+
+
+async def _flagged(
+    session, agent_id, *, user="PC\\ivanov", at=None, score=75, severity="high"
+) -> Incident:
+    event = Event(
+        occurred_at=at or datetime.now(UTC),
+        event_id=uuid.uuid4(),
+        agent_id=agent_id,
+        schema_version=1,
+        channel="file",
+        action="copy",
+        actor={"user_name": user},
+        subject={"dst_path": "E:\\salary.xlsx"},
+        artifact_sha256=SHA,
+    )
+    session.add(event)
+    await session.flush()
+    verdict = await write_verdict(
+        session,
+        occurred_at=event.occurred_at,
+        event_id=event.event_id,
+        scan_id=None,
+        status="flagged",
+        reason=None,
+        score=score,
+        severity=severity,
+        matches=MATCHES,
+    )
+    incident = await apply_verdict(session, event, verdict)
+    await session.commit()
+    return incident
+
+
+async def test_incidents_are_listed_newest_first_with_hostname(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-admin", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-list")
+    now = datetime.now(UTC)
+    older = await _flagged(session, agent.agent_id, user="PC\\a", at=now - timedelta(hours=2))
+    newer = await _flagged(session, agent.agent_id, user="PC\\b", at=now - timedelta(hours=1))
+
+    response = await app_client.get("/api/v1/incidents")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert [i["id"] for i in items] == [str(newer.id), str(older.id)]
+    assert items[0]["hostname"] == "ws-1"
+    assert items[0]["status"] == "open" and items[0]["severity"] == "high"
+    assert response.json()["next_cursor"] is None
+
+
+async def test_filters_and_pagination(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-filter", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-filter")
+    now = datetime.now(UTC)
+    for index in range(3):
+        await _flagged(
+            session,
+            agent.agent_id,
+            user=f"PC\\u{index}",
+            at=now - timedelta(minutes=index),
+            severity="critical" if index == 0 else "medium",
+            score=90 if index == 0 else 30,
+        )
+
+    critical = await app_client.get("/api/v1/incidents", params={"severity": "critical"})
+    page = await app_client.get("/api/v1/incidents", params={"limit": 2})
+    rest = await app_client.get(
+        "/api/v1/incidents", params={"limit": 2, "cursor": page.json()["next_cursor"]}
+    )
+
+    assert len(critical.json()["items"]) == 1
+    assert len(page.json()["items"]) == 2 and page.json()["next_cursor"]
+    assert len(rest.json()["items"]) == 1 and rest.json()["next_cursor"] is None
+    other = await app_client.get("/api/v1/incidents", params={"status": "closed"})
+    assert other.json()["items"] == []
+
+
+async def test_detail_has_verdict_matches_and_events_without_full_values(
+    app_client, session
+) -> None:
+    await login_as(app_client, session, username="inc-detail", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-detail")
+    incident = await _flagged(session, agent.agent_id)
+
+    response = await app_client.get(f"/api/v1/incidents/{incident.id}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["verdict"] == {"status": "flagged", "score": 75, "severity": "high"}
+    assert body["matches"] == [
+        {"rule_key": "iin_bin", "count": 2, "points": 40, "samples": ["**********17"]}
+    ]
+    assert len(body["events"]) == 1
+    assert body["events"][0]["dst_path"] == "E:\\salary.xlsx"
+    assert "900101300017" not in response.text
+
+
+async def test_unknown_incident_is_404(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-404", role=UserRole.ADMIN)
+
+    response = await app_client.get(f"/api/v1/incidents/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+
+
+async def test_operator_sees_only_incidents_of_his_scope(app_client, session) -> None:
+    mine = AgentGroup(name="mine")
+    foreign = AgentGroup(name="foreign")
+    session.add_all([mine, foreign])
+    await session.commit()
+    await login_as(app_client, session, username="inc-scoped", scope_group_id=mine.id)
+    visible = await enroll_agent(app_client, session, "api-vis", group_id=mine.id)
+    hidden = await enroll_agent(app_client, session, "api-hid", group_id=foreign.id)
+    own = await _flagged(session, visible.agent_id)
+    other = await _flagged(session, hidden.agent_id)
+
+    listing = await app_client.get("/api/v1/incidents")
+    detail = await app_client.get(f"/api/v1/incidents/{other.id}")
+    patch = await app_client.patch(f"/api/v1/incidents/{other.id}", json={"status": "closed"})
+
+    assert [i["id"] for i in listing.json()["items"]] == [str(own.id)]
+    assert detail.status_code == 404 and patch.status_code == 404
+
+
+async def test_status_changes_are_validated_and_audited(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-patch", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-patch")
+    incident = await _flagged(session, agent.agent_id)
+    url = f"/api/v1/incidents/{incident.id}"
+
+    ack = await app_client.patch(url, json={"status": "acknowledged"})
+    again = await app_client.patch(url, json={"status": "acknowledged"})
+    closed = await app_client.patch(url, json={"status": "closed"})
+    reopen = await app_client.patch(url, json={"status": "acknowledged"})
+    junk = await app_client.patch(url, json={"status": "open"})
+
+    assert ack.status_code == 200 and ack.json()["status"] == "acknowledged"
+    assert again.status_code == 200
+    assert closed.status_code == 200 and closed.json()["status"] == "closed"
+    assert reopen.status_code == 409
+    assert junk.status_code == 422
+    actions = (await session.scalars(select(AuditLog.action))).all()
+    assert list(actions).count("incident.update") == 2  # ack и close; повтор не пишется
+    await session.refresh(incident)
+    assert incident.closed_at is not None
+
+
+async def test_events_carry_the_verdict(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-ev", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-ev")
+    await _flagged(session, agent.agent_id)
+    session.add(
+        Event(
+            occurred_at=datetime.now(UTC) - timedelta(days=1),
+            event_id=uuid.uuid4(),
+            agent_id=agent.agent_id,
+            schema_version=1,
+            channel="agent",
+            action="start",
+        )
+    )
+    await session.commit()
+
+    items = (await app_client.get("/api/v1/events")).json()["items"]
+
+    by_action = {item["action"]: item for item in items}
+    assert by_action["copy"]["verdict"] == {"status": "flagged", "score": 75, "severity": "high"}
+    assert by_action["start"]["verdict"] is None

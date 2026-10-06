@@ -746,6 +746,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/incidents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Incidents
+         * @description Инциденты от свежих к старым. Оператор видит только свою область.
+         */
+        get: operations["list_incidents_api_v1_incidents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/incidents/{incident_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Incident */
+        get: operations["read_incident_api_v1_incidents__incident_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Incident */
+        patch: operations["update_incident_api_v1_incidents__incident_id__patch"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1395,6 +1433,7 @@ export interface components {
              * @default false
              */
             artifact_uploaded: boolean;
+            verdict?: components["schemas"]["VerdictSummary"] | null;
         };
         /** EventsResult */
         EventsResult: {
@@ -1567,6 +1606,134 @@ export interface components {
             arch: string;
             /** Agent Version */
             agent_version: string;
+        };
+        /** IncidentDetail */
+        IncidentDetail: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Hostname */
+            hostname: string;
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /** Title */
+            title: string;
+            /** Severity */
+            severity: string;
+            /** Score */
+            score: number;
+            /** Status */
+            status: string;
+            /** Events Count */
+            events_count: number;
+            /**
+             * First Event At
+             * Format: date-time
+             */
+            first_event_at: string;
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Assignee */
+            assignee?: string | null;
+            verdict?: components["schemas"]["VerdictSummary"] | null;
+            /** Matches */
+            matches: components["schemas"]["IncidentMatch"][];
+            /** Events */
+            events: components["schemas"]["IncidentEventRef"][];
+        };
+        /** IncidentEventRef */
+        IncidentEventRef: {
+            /**
+             * Event Id
+             * Format: uuid
+             */
+            event_id: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Action */
+            action: string;
+            /** Severity */
+            severity: string;
+            /** Dst Path */
+            dst_path?: string | null;
+        };
+        /** IncidentMatch */
+        IncidentMatch: {
+            /** Rule Key */
+            rule_key: string;
+            /** Count */
+            count: number;
+            /** Points */
+            points: number;
+            /** Samples */
+            samples: string[];
+        };
+        /** IncidentPage */
+        IncidentPage: {
+            /** Items */
+            items: components["schemas"]["IncidentSummary"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** IncidentStatusUpdate */
+        IncidentStatusUpdate: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "acknowledged" | "closed";
+        };
+        /** IncidentSummary */
+        IncidentSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Agent Id
+             * Format: uuid
+             */
+            agent_id: string;
+            /** Hostname */
+            hostname: string;
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /** Title */
+            title: string;
+            /** Severity */
+            severity: string;
+            /** Score */
+            score: number;
+            /** Status */
+            status: string;
+            /** Events Count */
+            events_count: number;
+            /**
+             * First Event At
+             * Format: date-time
+             */
+            first_event_at: string;
+            /**
+             * Last Event At
+             * Format: date-time
+             */
+            last_event_at: string;
+            /** Assignee */
+            assignee?: string | null;
         };
         /** IssuedPasswordResponse */
         IssuedPasswordResponse: {
@@ -1809,6 +1976,15 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VerdictSummary */
+        VerdictSummary: {
+            /** Status */
+            status: string;
+            /** Score */
+            score: number;
+            /** Severity */
+            severity: string;
         };
         /** VersionCount */
         VersionCount: {
@@ -3304,6 +3480,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_incidents_api_v1_incidents_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                severity?: string | null;
+                agent_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_incident_api_v1_incidents__incident_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_incident_api_v1_incidents__incident_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                incident_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IncidentStatusUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IncidentDetail"];
                 };
             };
             /** @description Validation Error */

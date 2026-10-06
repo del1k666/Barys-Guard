@@ -9,10 +9,11 @@ from sqlalchemy import ColumnElement, and_, exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from barysguard.api.deps import current_user
-from barysguard.api.schemas import EventPage, EventSummary
+from barysguard.api.schemas import EventPage, EventSummary, VerdictSummary
 from barysguard.db.models.agent import Agent
 from barysguard.db.models.artifact import Artifact
 from barysguard.db.models.event import Event
+from barysguard.db.models.inspection import Verdict
 from barysguard.db.models.user import User
 from barysguard.db.session import get_session
 from barysguard.services.scope import scope_group_ids
@@ -87,8 +88,9 @@ async def list_events(
     )
     rows = (
         await session.execute(
-            select(Event, Agent.hostname, uploaded)
+            select(Event, Agent.hostname, uploaded, Verdict.status, Verdict.score, Verdict.severity)
             .join(Agent, Agent.id == Event.agent_id)
+            .outerjoin(Verdict, Verdict.id == Event.verdict_id)
             .where(*conditions)
             .order_by(Event.occurred_at.desc(), Event.event_id.desc())
             .limit(limit + 1)
@@ -119,8 +121,13 @@ async def list_events(
                 labels=event.labels,
                 artifact_sha256=event.artifact_sha256,
                 artifact_uploaded=bool(is_uploaded),
+                verdict=(
+                    VerdictSummary(status=v_status, score=v_score, severity=v_severity)
+                    if v_status is not None
+                    else None
+                ),
             )
-            for event, hostname, is_uploaded in page
+            for event, hostname, is_uploaded, v_status, v_score, v_severity in page
         ],
         next_cursor=next_cursor,
     )

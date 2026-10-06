@@ -1359,6 +1359,128 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/incidents:
+    get:
+      tags:
+      - api
+      summary: List Incidents
+      description: Инциденты от свежих к старым. Оператор видит только свою область.
+      operationId: list_incidents_api_v1_incidents_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Status
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Severity
+      - name: agent_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Agent Id
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cursor
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/incidents/{incident_id}:
+    get:
+      tags:
+      - api
+      summary: Read Incident
+      operationId: read_incident_api_v1_incidents__incident_id__get
+      parameters:
+      - name: incident_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Incident Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - api
+      summary: Update Incident
+      operationId: update_incident_api_v1_incidents__incident_id__patch
+      parameters:
+      - name: incident_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Incident Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentStatusUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentDetail'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AgentConfigDocument:
@@ -2372,6 +2494,10 @@ components:
           type: boolean
           title: Artifact Uploaded
           default: false
+        verdict:
+          anyOf:
+          - $ref: '#/components/schemas/VerdictSummary'
+          - type: 'null'
       type: object
       required:
       - event_id
@@ -2672,6 +2798,220 @@ components:
       - arch
       - agent_version
       title: HostFacts
+    IncidentDetail:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        hostname:
+          type: string
+          title: Hostname
+        artifact_sha256:
+          type: string
+          title: Artifact Sha256
+        title:
+          type: string
+          title: Title
+        severity:
+          type: string
+          title: Severity
+        score:
+          type: integer
+          title: Score
+        status:
+          type: string
+          title: Status
+        events_count:
+          type: integer
+          title: Events Count
+        first_event_at:
+          type: string
+          format: date-time
+          title: First Event At
+        last_event_at:
+          type: string
+          format: date-time
+          title: Last Event At
+        assignee:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignee
+        verdict:
+          anyOf:
+          - $ref: '#/components/schemas/VerdictSummary'
+          - type: 'null'
+        matches:
+          items:
+            $ref: '#/components/schemas/IncidentMatch'
+          type: array
+          title: Matches
+        events:
+          items:
+            $ref: '#/components/schemas/IncidentEventRef'
+          type: array
+          title: Events
+      type: object
+      required:
+      - id
+      - agent_id
+      - hostname
+      - artifact_sha256
+      - title
+      - severity
+      - score
+      - status
+      - events_count
+      - first_event_at
+      - last_event_at
+      - matches
+      - events
+      title: IncidentDetail
+    IncidentEventRef:
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          title: Event Id
+        occurred_at:
+          type: string
+          format: date-time
+          title: Occurred At
+        action:
+          type: string
+          title: Action
+        severity:
+          type: string
+          title: Severity
+        dst_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Dst Path
+      type: object
+      required:
+      - event_id
+      - occurred_at
+      - action
+      - severity
+      title: IncidentEventRef
+    IncidentMatch:
+      properties:
+        rule_key:
+          type: string
+          title: Rule Key
+        count:
+          type: integer
+          title: Count
+        points:
+          type: integer
+          title: Points
+        samples:
+          items:
+            type: string
+          type: array
+          title: Samples
+      type: object
+      required:
+      - rule_key
+      - count
+      - points
+      - samples
+      title: IncidentMatch
+    IncidentPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/IncidentSummary'
+          type: array
+          title: Items
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+      type: object
+      required:
+      - items
+      - next_cursor
+      title: IncidentPage
+    IncidentStatusUpdate:
+      properties:
+        status:
+          type: string
+          enum:
+          - acknowledged
+          - closed
+          title: Status
+      type: object
+      required:
+      - status
+      title: IncidentStatusUpdate
+    IncidentSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        agent_id:
+          type: string
+          format: uuid
+          title: Agent Id
+        hostname:
+          type: string
+          title: Hostname
+        artifact_sha256:
+          type: string
+          title: Artifact Sha256
+        title:
+          type: string
+          title: Title
+        severity:
+          type: string
+          title: Severity
+        score:
+          type: integer
+          title: Score
+        status:
+          type: string
+          title: Status
+        events_count:
+          type: integer
+          title: Events Count
+        first_event_at:
+          type: string
+          format: date-time
+          title: First Event At
+        last_event_at:
+          type: string
+          format: date-time
+          title: Last Event At
+        assignee:
+          anyOf:
+          - type: string
+            format: uuid
+          - type: 'null'
+          title: Assignee
+      type: object
+      required:
+      - id
+      - agent_id
+      - hostname
+      - artifact_sha256
+      - title
+      - severity
+      - score
+      - status
+      - events_count
+      - first_event_at
+      - last_event_at
+      title: IncidentSummary
     IssuedPasswordResponse:
       properties:
         user:
@@ -3092,6 +3432,23 @@ components:
       - msg
       - type
       title: ValidationError
+    VerdictSummary:
+      properties:
+        status:
+          type: string
+          title: Status
+        score:
+          type: integer
+          title: Score
+        severity:
+          type: string
+          title: Severity
+      type: object
+      required:
+      - status
+      - score
+      - severity
+      title: VerdictSummary
     VersionCount:
       properties:
         value:
