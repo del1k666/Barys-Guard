@@ -91,3 +91,52 @@ async def test_ruleset_is_empty_before_seeding(app_client, session) -> None:
     ruleset = await load_ruleset(session)
 
     assert ruleset.weights() == [] and ruleset.detectors() == []
+
+
+async def test_reseeding_does_not_restore_a_deleted_builtin_term(app_client, session) -> None:
+    await seed_rules(session)
+    await session.commit()
+    before = await load_ruleset(session)
+    deleted = (
+        await session.scalars(select(DictionaryTerm).where(DictionaryTerm.term == "секретно"))
+    ).one()
+    await session.delete(deleted)
+    await session.commit()
+
+    report = await seed_rules(session)
+    await session.commit()
+    after = await load_ruleset(session)
+
+    assert report.terms_added == 0 and report.versions_created == 1
+    terms = set((await session.scalars(select(DictionaryTerm.term))).all())
+    assert "секретно" not in terms
+    assert terms == set(BUILTIN_TERMS) - {"секретно"}
+    markings_versions = (
+        await session.scalars(
+            select(RuleVersion.version)
+            .join(Rule)
+            .where(Rule.key == "markings")
+            .order_by(RuleVersion.version)
+        )
+    ).all()
+    assert list(markings_versions) == [1, 2]
+    assert after.hash != before.hash
+
+    again = await seed_rules(session)
+    await session.commit()
+    assert (again.versions_created, again.terms_added) == (0, 0)
+
+
+async def test_particle_board_is_not_a_marking(app_client, session) -> None:
+    # «ДСП» — это и древесно-стружечная плита: термин убран из встроенного словаря.
+    await seed_rules(session)
+    await session.commit()
+    ruleset = await load_ruleset(session)
+
+    scanner = ContentScanner(ruleset.detectors())
+    scanner.feed("Шкаф ДСП 16мм, полка ДСП")
+    found = scanner.finish()
+
+    assert found["markings"].count == 0
+    assert "дсп" not in BUILTIN_TERMS
+    assert "для служебного пользования" in BUILTIN_TERMS

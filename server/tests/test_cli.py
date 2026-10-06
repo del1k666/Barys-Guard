@@ -93,7 +93,7 @@ async def test_cli_seed_rules_runs_twice_without_failing(
         assert exited.value.code == 0
 
     printed = capsys.readouterr().out.splitlines()
-    assert printed[0] == "правил создано: 3, версий: 3, терминов добавлено: 8"
+    assert printed[0] == "правил создано: 3, версий: 3, терминов добавлено: 7"
     assert printed[1] == "правил создано: 0, версий: 0, терминов добавлено: 0"
 
     rules = (await session.execute(select(Rule.key))).scalars().all()

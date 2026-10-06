@@ -24,7 +24,6 @@ BUILTIN_TERMS = (
     "конфиденциально",
     "строго конфиденциально",
     "для служебного пользования",
-    "дсп",
     "коммерческая тайна",
     "служебная тайна",
     "секретно",
@@ -67,26 +66,29 @@ class SeedReport:
 async def seed_rules(session: AsyncSession) -> SeedReport:
     """Заводит встроенные правила и словарь. Повторный вызов ничего не дублирует.
 
+    Термины словаря добавляются только при его создании; после правки терминов
+    оператором повторный запуск публикует новую версию правила (сменился terms_hash).
     Параметры возвращаются к встроенным: ручные правки весов (когда появится
     редактор) повторный запуск перезапишет новой версией.
     """
+    added: list[str] = []
     dictionary = await session.scalar(select(Dictionary).where(Dictionary.key == MARKINGS_KEY))
     if dictionary is None:
+        # Встроенные термины кладутся только при создании словаря: дальше словарь
+        # принадлежит оператору, и удалённый им термин повторный запуск не возвращает.
         dictionary = Dictionary(key=MARKINGS_KEY, title="Грифы")
         session.add(dictionary)
         await session.flush()
+        added = list(BUILTIN_TERMS)
+        session.add_all(DictionaryTerm(dictionary_id=dictionary.id, term=term) for term in added)
+        await session.flush()
 
-    existing = set(
-        (
-            await session.scalars(
-                select(DictionaryTerm.term).where(DictionaryTerm.dictionary_id == dictionary.id)
-            )
-        ).all()
-    )
-    added = [term for term in BUILTIN_TERMS if term not in existing]
-    session.add_all(DictionaryTerm(dictionary_id=dictionary.id, term=term) for term in added)
-    await session.flush()
-    digest = terms_hash(existing | set(added))
+    terms = (
+        await session.scalars(
+            select(DictionaryTerm.term).where(DictionaryTerm.dictionary_id == dictionary.id)
+        )
+    ).all()
+    digest = terms_hash(terms)
 
     rules_created = versions_created = 0
     for definition in BUILTIN_RULES:
