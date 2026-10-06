@@ -9,7 +9,9 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/config"
+	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/keystore"
 	"github.com/barysguard/agent/internal/platform"
 	"github.com/barysguard/agent/internal/transport"
@@ -31,6 +33,12 @@ type pendingResult struct {
 	body      transport.CommandResultRequest
 }
 
+// ArtifactWorker — загрузка на сервер копий файлов с внешних томов.
+type ArtifactWorker interface {
+	Run(ctx context.Context, emit func(events.Envelope))
+	SetConfig(artifacts.Config)
+}
+
 type Options struct {
 	ServerURL    string
 	AgentVersion string
@@ -40,15 +48,33 @@ type Options struct {
 	Random       rand.Source
 	// Now подменяется в тестах продления; при nil берётся time.Now.
 	Now func() time.Time
+
+	// Buffer — шифрованный offline-буфер. При nil события не собираются
+	// и не отправляются.
+	Buffer EventBuffer
+	// Collectors запускаются в Run и в StartEvents.
+	Collectors []events.Collector
+	// CollectorFactory строит сборщики, зависящие от конфигурации. Группа
+	// запускается при StartEvents и пересоздаётся, когда меняется раздел
+	// collectors документа. Сборщики из Collectors от конфигурации не зависят
+	// и не перезапускаются.
+	CollectorFactory func(document map[string]any) []events.Collector
+	// Artifacts отправляет копии файлов на сервер. nil — загрузки нет.
+	// Запускается вместе со сборщиками и применяет раздел collectors.artifact.
+	Artifacts ArtifactWorker
 }
 
 type Agent struct {
-	options    Options
-	state      config.State
-	backoff    *Backoff
-	random     *rand.Rand
-	dispatcher Dispatcher
-	pending    []pendingResult
+	options       Options
+	state         config.State
+	backoff       *Backoff
+	random        *rand.Rand
+	dispatcher    Dispatcher
+	pending       []pendingResult
+	queue         *events.Queue
+	reload        chan map[string]any
+	collectorsDoc any
+	batchCap      int // верхний предел пакета после ответа 413
 
 	startedAt       time.Time
 	lastHeartbeatAt time.Time
@@ -77,6 +103,8 @@ func New(options Options) (*Agent, error) {
 		backoff:   NewBackoff(DefaultBackoffBase, DefaultBackoffMax, options.Random),
 		random:    rand.New(options.Random),
 		startedAt: options.Now(),
+		queue:     events.NewQueue(queueCapacity),
+		reload:    make(chan map[string]any, 1),
 	}
 	// Диспетчер замыкается на агента: обе функции обращаются к его состоянию.
 	agent.dispatcher = NewDispatcher(agent.refreshConfig, agent.diagnostics)
@@ -104,6 +132,9 @@ func (a *Agent) refreshConfig(ctx context.Context) (int, error) {
 	if err := config.SaveState(a.options.Layout, a.state, a.options.Guard); err != nil {
 		return 0, err
 	}
+	a.emitConfigApplied(response.Version)
+	a.applyArtifactConfig()
+	a.notifyCollectorsReload()
 	return response.Version, nil
 }
 
@@ -124,7 +155,13 @@ func (a *Agent) syncConfig(ctx context.Context, serverVersion int) error {
 
 	a.state.ConfigVersion = response.Version
 	a.state.Document = response.Document
-	return config.SaveState(a.options.Layout, a.state, a.options.Guard)
+	if err := config.SaveState(a.options.Layout, a.state, a.options.Guard); err != nil {
+		return err
+	}
+	a.emitConfigApplied(response.Version)
+	a.applyArtifactConfig()
+	a.notifyCollectorsReload()
+	return nil
 }
 
 // flushPending досылает результаты, не ушедшие в прошлые проходы.
@@ -159,13 +196,16 @@ func (a *Agent) pauseFor(err error) time.Duration {
 
 // RunOnce выполняет один проход цикла и возвращает паузу до следующего.
 func (a *Agent) RunOnce(ctx context.Context) (time.Duration, error) {
+	buffered, bufferBytes := 0, int64(0)
+	if a.options.Buffer != nil {
+		buffered, bufferBytes = a.options.Buffer.Stats()
+	}
 	response, err := a.options.Client.Heartbeat(ctx, transport.HeartbeatRequest{
-		AgentVersion:  a.options.AgentVersion,
-		ConfigVersion: a.state.ConfigVersion,
-		SentAt:        a.options.Now().UTC(),
-		// Буфера в этом плане нет, но контракт задаёт форму запроса.
-		BufferedEvents: 0,
-		BufferBytes:    0,
+		AgentVersion:   a.options.AgentVersion,
+		ConfigVersion:  a.state.ConfigVersion,
+		SentAt:         a.options.Now().UTC(),
+		BufferedEvents: buffered,
+		BufferBytes:    int(bufferBytes),
 	})
 	if err != nil {
 		if transport.IsForbidden(err) {
@@ -192,6 +232,8 @@ func (a *Agent) RunOnce(ctx context.Context) (time.Duration, error) {
 		}
 	}
 
+	a.flushEvents(ctx)
+
 	interval := time.Duration(response.HeartbeatIntervalSeconds) * time.Second
 	if interval <= 0 {
 		interval = fallbackInterval
@@ -201,6 +243,9 @@ func (a *Agent) RunOnce(ctx context.Context) (time.Duration, error) {
 
 // Run крутит цикл до отмены контекста.
 func (a *Agent) Run(ctx context.Context) error {
+	stopEvents := a.StartEvents(ctx)
+	defer stopEvents()
+
 	for {
 		pause, err := a.RunOnce(ctx)
 		if errors.Is(err, ErrRevoked) {

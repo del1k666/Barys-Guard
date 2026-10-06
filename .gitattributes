@@ -14,3 +14,4 @@
 # Не учитывать в статистике языков репозитория
 **/__pycache__/** linguist-generated=true
 legacy/**        linguist-vendored=true
+*.cmd       text eol=crlf

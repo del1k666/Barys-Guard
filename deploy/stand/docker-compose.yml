@@ -1,0 +1,175 @@
+# Dev-стенд BarysGuard. НЕ ДЛЯ БОЕВОГО ИСПОЛЬЗОВАНИЯ: известные пароли,
+# cookie без флага Secure, консоль по http. Порты открыты только на 127.0.0.1.
+#
+# Управление: .\stand.cmd up | down | reset | status | logs | add-agent
+name: barysguard-stand
+
+x-server-environment: &server-environment
+  BG_DATABASE_URL: postgresql+asyncpg://barysguard:barysguard@postgres:5432/barysguard
+  BG_CA_DIR: /var/lib/barysguard/pki
+  BG_CA_PASSPHRASE: ${BG_STAND_CA_PASSPHRASE:-stand-ca-passphrase}
+  # Консоль по http на localhost: cookie с флагом Secure браузер бы не сохранил.
+  BG_COOKIE_SECURE: "false"
+  BG_CONSOLE_ORIGINS: http://localhost:${STAND_CONSOLE_PORT:-8080},http://127.0.0.1:${STAND_CONSOLE_PORT:-8080}
+  BG_LOG_LEVEL: INFO
+  BG_ARTIFACT_PATH: /var/lib/barysguard/artifacts
+  # Известный ключ только для стенда: хранилище должно работать «из коробки».
+  BG_ARTIFACT_MASTER_KEY: ${BG_STAND_ARTIFACT_KEY:-YmFyeXNndWFyZC1zdGFuZC1hcnRpZmFjdC1rZXktMzI=}
+
+x-agent-environment: &agent-environment
+  BG_SERVER_URL: https://nginx:8443
+
+x-agent: &agent
+  image: barysguard-agent:stand
+  pull_policy: never
+  # on-failure, а не unless-stopped: отозванный агент завершается кодом 0
+  # (см. agent/entrypoint.sh) и не должен подниматься по кругу.
+  restart: on-failure
+  depends_on:
+    nginx:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: barysguard
+      POSTGRES_PASSWORD: barysguard
+      POSTGRES_DB: barysguard
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barysguard"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Одноразовая задача: миграции и начальное состояние. Завершается кодом 0.
+  bootstrap:
+    build:
+      context: ../../server
+    image: barysguard-server:stand
+    command: ["sh", "-c", "alembic upgrade head && barysguard-admin bootstrap-dev"]
+    environment:
+      <<: *server-environment
+      BG_STAND: "1"
+      BG_BOOTSTRAP_ADMIN_USERNAME: ${BG_STAND_ADMIN_USERNAME:-admin}
+      BG_BOOTSTRAP_ADMIN_PASSWORD: ${BG_STAND_ADMIN_PASSWORD:-stand-admin-password}
+    volumes:
+      - pki:/var/lib/barysguard/pki
+      - tls:/tls
+      - enroll:/enroll
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    image: barysguard-server:stand
+    pull_policy: never
+    environment: *server-environment
+    volumes:
+      - pki:/var/lib/barysguard/pki
+      - artifacts:/var/lib/barysguard/artifacts
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready').status == 200 else 1)"
+      interval: 3s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: deploy/stand/nginx/Dockerfile
+    image: barysguard-nginx:stand
+    ports:
+      - "127.0.0.1:${STAND_CONSOLE_PORT:-8080}:8080"
+      - "127.0.0.1:${STAND_AGENT_PORT:-8443}:8443"
+    volumes:
+      - tls:/etc/barysguard/tls:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  agent-1:
+    <<: *agent
+    build:
+      context: ../../agent
+    hostname: agent-1
+    environment:
+      <<: *agent-environment
+      BG_AGENT_GROUP: accounting
+    volumes:
+      - tls:/tls:ro
+      - enroll:/enroll:ro
+      - agent-1-data:/var/lib/agent
+
+  agent-2:
+    <<: *agent
+    hostname: agent-2
+    environment:
+      <<: *agent-environment
+      BG_AGENT_GROUP: accounting
+    volumes:
+      - tls:/tls:ro
+      - enroll:/enroll:ro
+      - agent-2-data:/var/lib/agent
+
+  agent-3:
+    <<: *agent
+    hostname: agent-3
+    environment:
+      <<: *agent-environment
+      BG_AGENT_GROUP: accounting
+    volumes:
+      - tls:/tls:ro
+      - enroll:/enroll:ro
+      - agent-3-data:/var/lib/agent
+
+  agent-4:
+    <<: *agent
+    hostname: agent-4
+    environment:
+      <<: *agent-environment
+      BG_AGENT_GROUP: it
+    volumes:
+      - tls:/tls:ro
+      - enroll:/enroll:ro
+      - agent-4-data:/var/lib/agent
+
+  agent-5:
+    <<: *agent
+    hostname: agent-5
+    environment:
+      <<: *agent-environment
+      BG_AGENT_GROUP: it
+    volumes:
+      - tls:/tls:ro
+      - enroll:/enroll:ro
+      - agent-5-data:/var/lib/agent
+
+volumes:
+  pgdata:
+  pki:
+  tls:
+  enroll:
+  artifacts:
+  agent-1-data:
+  agent-2-data:
+  agent-3-data:
+  agent-4-data:
+  agent-5-data:

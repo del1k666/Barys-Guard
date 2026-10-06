@@ -29,3 +29,19 @@ export function CommandStatusBadge({ status }: { status: string }) {
     <Badge tone={COMMAND_TONES[status] ?? "neutral"}>{ru.status.command[status] ?? status}</Badge>
   );
 }
+
+const SEVERITY_TONES: Record<string, Tone> = {
+  info: "neutral",
+  low: "info",
+  medium: "warn",
+  high: "danger",
+  critical: "danger",
+};
+
+export function SeverityBadge({ severity }: { severity: string }) {
+  return (
+    <Badge tone={SEVERITY_TONES[severity] ?? "neutral"}>
+      {ru.events.severities[severity] ?? severity}
+    </Badge>
+  );
+}

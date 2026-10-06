@@ -38,9 +38,7 @@ async def test_cli_creates_an_operator_with_a_password(
         line.split(":", 1)[1].strip() for line in printed.splitlines() if line.startswith("пароль")
     )
 
-    stored = (
-        await session.execute(select(User).where(User.username == "cli-admin"))
-    ).scalar_one()
+    stored = (await session.execute(select(User).where(User.username == "cli-admin"))).scalar_one()
 
     assert stored.role is UserRole.ADMIN
     assert stored.must_change_password is True
@@ -71,9 +69,7 @@ async def test_cli_issues_an_api_key_for_automation(
     printed = capsys.readouterr().out
     assert "ключ" in printed
 
-    stored = (
-        await session.execute(select(User).where(User.username == "cli-robot"))
-    ).scalar_one()
+    stored = (await session.execute(select(User).where(User.username == "cli-robot"))).scalar_one()
 
     assert stored.api_key_sha256 is not None
     assert stored.password_hash is None

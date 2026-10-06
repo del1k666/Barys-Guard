@@ -25,6 +25,7 @@ from barysguard.db.models.audit import AuditLog
 from barysguard.db.models.certificate import AgentCertificate
 from barysguard.db.models.command import Command, CommandStatus
 from barysguard.db.models.enrollment import EnrollmentToken
+from barysguard.db.models.event import Event
 from barysguard.db.models.user import User, UserRole
 from barysguard.db.session import get_session
 from barysguard.services.audit import verify_audit_chain
@@ -126,6 +127,15 @@ async def read_overview(
         )
     ).scalar_one()
 
+    events_24h = (
+        await session.execute(
+            select(func.count())
+            .select_from(Event)
+            .join(Agent, Agent.id == Event.agent_id)
+            .where(*conditions, Event.occurred_at > now - timedelta(hours=24))
+        )
+    ).scalar_one()
+
     async def distribution(column: InstrumentedAttribute[str]) -> list[VersionCount]:
         rows = (
             await session.execute(
@@ -150,6 +160,7 @@ async def read_overview(
         certificates_expiring=certificates_expiring,
         tokens_active=tokens_active,
         commands=CommandCounts(queued=queued, failed_24h=failed),
+        events_24h=events_24h,
         agent_versions=await distribution(Agent.agent_version),
         operating_systems=await distribution(Agent.os),
     )

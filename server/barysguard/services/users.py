@@ -40,14 +40,19 @@ async def create_account(
     scope_group_id: uuid.UUID | None = None,
     with_password: bool = True,
     with_api_key: bool = False,
+    fixed_password: str | None = None,
+    must_change_password: bool | None = None,
 ) -> tuple[User, str | None, str | None]:
     """Создаёт учётную запись и возвращает открытые секреты — один раз.
 
     Пароль и ключ независимы: человек входит в консоль паролем, автоматизация
     ходит ключом. Навязывать учётной записи обе формы значит создавать
     секрет, которым никто не пользуется, но который можно украсть.
+
+    fixed_password и must_change_password нужны только dev-стенду, где пароль
+    известен заранее. Без них поведение прежнее: пароль случайный и временный.
     """
-    password = generate_password() if with_password else None
+    password = (fixed_password or generate_password()) if with_password else None
     api_key = generate_api_key() if with_api_key else None
 
     user = User(
@@ -56,7 +61,9 @@ async def create_account(
         scope_group_id=scope_group_id,
         password_hash=hash_password(password) if password else None,
         api_key_sha256=hash_api_key(api_key) if api_key else None,
-        must_change_password=password is not None,
+        must_change_password=(
+            (password is not None) if must_change_password is None else must_change_password
+        ),
     )
     session.add(user)
     await session.flush()

@@ -60,9 +60,23 @@ class Settings(BaseSettings):
             item.strip().rstrip("/") for item in self.console_origins.split(",") if item.strip()
         ]
 
-    # Хранилище артефактов (используется в плане 1C)
+    # Только для dev-стенда (deploy/stand). Без BG_STAND=1 команда
+    # bootstrap-dev не работает: фиксированный пароль администратора не должен
+    # появиться на боевом сервере по недосмотру.
+    stand: bool = False
+    bootstrap_admin_username: str = "admin"
+    bootstrap_admin_password: str = ""
+    stand_tls_dir: Path = Path("/tls")
+    stand_enroll_dir: Path = Path("/enroll")
+
+    # Хранилище артефактов. Мастер-ключ — 32 байта в base64, из окружения или
+    # файла секретов, но не из базы: дамп БД не должен открывать содержимое.
     artifact_path: Path = Path("/var/lib/barysguard/artifacts")
     artifact_master_key: str = ""
+    artifact_master_key_file: Path | None = None
+    artifact_max_bytes: int = 50 * 1024 * 1024
+    artifact_chunk_bytes: int = 1024 * 1024
+    upload_session_ttl_hours: int = 24
 
 
 @lru_cache

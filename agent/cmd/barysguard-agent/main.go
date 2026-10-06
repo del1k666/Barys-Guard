@@ -12,7 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/barysguard/agent/internal/artifacts"
+	"github.com/barysguard/agent/internal/buffer"
+	"github.com/barysguard/agent/internal/collectors"
+	"github.com/barysguard/agent/internal/collectors/lifecycle"
 	"github.com/barysguard/agent/internal/config"
+	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/keystore"
 	"github.com/barysguard/agent/internal/platform"
 	"github.com/barysguard/agent/internal/runner"
@@ -109,14 +114,59 @@ func loadAgent(dataDir string) (*runner.Agent, config.Layout, error) {
 		return nil, layout, err
 	}
 
+	state, err := config.LoadState(layout)
+	if err != nil {
+		return nil, layout, fmt.Errorf("состояние: %w", err)
+	}
+	buf, reset, err := buffer.OpenAt(layout, guard, buffer.LimitsFromDocument(state.Document))
+	if err != nil {
+		return nil, layout, fmt.Errorf("буфер событий: %w", err)
+	}
+
+	// Копии файлов шифруются тем же ключом, что и буфер событий.
+	key, _, err := buffer.LoadOrCreateKey(layout, guard)
+	if err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("ключ копий файлов: %w", err)
+	}
+	if err := guard.SecureDir(layout.StagingDir()); err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("каталог копий файлов: %w", err)
+	}
+	store, err := artifacts.NewStore(layout.StagingDir(), key, time.Now)
+	if err != nil {
+		buf.Close()
+		return nil, layout, fmt.Errorf("каталог копий файлов: %w", err)
+	}
+	store.SetConfig(artifacts.ConfigFromDocument(state.Document))
+	plat := collectors.DefaultPlatform()
+	plat.Stager = store
+
 	agent, err := runner.New(runner.Options{
-		ServerURL:    settings.ServerURL,
-		AgentVersion: agentVersion,
-		Layout:       layout,
-		Guard:        guard,
-		Client:       client,
+		ServerURL:        settings.ServerURL,
+		AgentVersion:     agentVersion,
+		Layout:           layout,
+		Guard:            guard,
+		Client:           client,
+		Buffer:           buf,
+		Collectors:       []events.Collector{lifecycle.New(agentVersion)},
+		CollectorFactory: collectors.NewFactoryFor(plat, layout.Dir),
+		Artifacts:        artifacts.NewWorker(store, client),
 	})
-	return agent, layout, err
+	if err != nil {
+		buf.Close()
+		return nil, layout, err
+	}
+	if reset {
+		report, envErr := events.NewEnvelope(events.ChannelAgent, "buffer_reset", events.SeverityHigh, map[string]any{
+			"component": "buffer",
+			"detail":    "ключ буфера утрачен: прежние неотправленные события потеряны",
+		})
+		if envErr == nil {
+			agent.Emit(report)
+		}
+	}
+	return agent, layout, nil
 }
 
 func commandRun(args []string) error {
@@ -130,6 +180,7 @@ func commandRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer agent.Close()
 
 	// Сигнал завершения обязан останавливать цикл, а не обрывать его
 	// посреди отправки результата команды.

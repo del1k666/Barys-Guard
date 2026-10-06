@@ -35,6 +35,9 @@ func (l Layout) KeyPath() string      { return filepath.Join(l.PKIDir(), "agent.
 func (l Layout) CertPath() string     { return filepath.Join(l.PKIDir(), "agent.crt") }
 func (l Layout) CAPath() string       { return filepath.Join(l.PKIDir(), "ca.crt") }
 
+// StagingDir — зашифрованные копии файлов с внешних томов до загрузки на сервер.
+func (l Layout) StagingDir() string { return filepath.Join(l.Dir, "staging") }
+
 // WriteAtomic пишет во временный файл рядом и переименовывает поверх целевого.
 //
 // Прямая запись оставляет агента после обрыва питания с ключом от одного
@@ -75,3 +78,8 @@ func WriteAtomic(path string, data []byte, guard platform.Guard) error {
 	}
 	return nil
 }
+
+// Буфер событий и его ключ лежат вне каталога pki: ключ буфера не
+// удостоверяет личность агента, и подмена сертификата его не затрагивает.
+func (l Layout) BufferPath() string    { return filepath.Join(l.Dir, "events.db") }
+func (l Layout) BufferKeyPath() string { return filepath.Join(l.Dir, "buffer.key") }
