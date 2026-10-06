@@ -22,8 +22,13 @@ _ACTION_TITLES = {
 
 def build_title(action: str, matches: list[dict[str, Any]]) -> str:
     head = _ACTION_TITLES.get(action, "Файловое событие")
+    # Порядок в заголовке постоянный (как в _RULE_LABELS), а не по ключам правил в БД.
+    order = list(_RULE_LABELS)
+    ranked = sorted(
+        matches, key=lambda m: order.index(m["rule_key"]) if m["rule_key"] in order else len(order)
+    )
     parts = ", ".join(
-        f"{_RULE_LABELS.get(m['rule_key'], m['rule_key'])} ×{m['count']}" for m in matches
+        f"{_RULE_LABELS.get(m['rule_key'], m['rule_key'])} ×{m['count']}" for m in ranked
     )
     return f"{head}: {parts}"
 

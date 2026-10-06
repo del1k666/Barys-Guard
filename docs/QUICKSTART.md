@@ -255,7 +255,9 @@ export BG_TEST_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhos
 | `BG_ARTIFACT_MASTER_KEY_FILE` | нет | То же, но из файла секретов |
 | `BG_ARTIFACT_PATH` | нет | Каталог хранилища артефактов, по умолчанию `/var/lib/barysguard/artifacts` |
 | `BG_ARTIFACT_MAX_BYTES` | нет | Предел размера артефакта, по умолчанию 52 428 800 |
+| `BG_ARTIFACT_CHUNK_BYTES` | нет | Размер чанка загрузки, по умолчанию 1 МиБ |
 | `BG_UPLOAD_SESSION_TTL_HOURS` | нет | Срок жизни открытой загрузки, по умолчанию 24 |
+| `BG_WORKER_*`, `BG_INSPECT_*`, `BG_INCIDENT_MIN_SCORE` | нет | Настройки воркера инспекции содержимого, см. `docs/DLP_WORKER.md` |
 | `BG_TEST_DATABASE_URL` | нет | Сервер PostgreSQL для интеграционных тестов |
 
 `BG_CA_PASSPHRASE` при утрате делает невозможным выпуск и продление сертификатов —
@@ -266,6 +268,15 @@ export BG_TEST_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhos
 ```bash
 python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
+
+Содержимое загруженных файлов проверяет отдельный процесс, воркер инспекции:
+
+```bash
+barysguard-admin seed-rules   # завести встроенные правила (идемпотентно)
+barysguard-admin worker       # запустить воркер
+```
+
+Подробности — в `docs/DLP_WORKER.md`. На Docker-стенде воркер — сервис `worker`.
 
 Потеря ключа делает уже загруженные файлы нечитаемыми. На Docker-стенде используется известный ключ (`BG_STAND_ARTIFACT_KEY` в `deploy/stand/.env` его меняет).
 

@@ -65,6 +65,15 @@ def test_title_names_the_action_and_the_rules() -> None:
     assert build_title("scan", MATCHES).startswith("Файловое событие:")
 
 
+def test_title_order_is_canonical_regardless_of_match_order() -> None:
+    shuffled = [
+        {"rule_key": "markings", "count": 1},
+        {"rule_key": "card", "count": 2},
+        {"rule_key": "iin_bin", "count": 3},
+    ]
+    assert build_title("copy", shuffled) == "Копирование на USB: ИИН/БИН ×3, карта ×2, гриф ×1"
+
+
 async def test_write_verdict_links_the_event(app_client, session) -> None:
     agent = await enroll_agent(app_client, session, "v-link")
     event = await _event(session, agent.agent_id)

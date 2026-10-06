@@ -85,6 +85,19 @@ services:
       retries: 30
     restart: unless-stopped
 
+  # Воркер инспекции содержимого: разбирает очередь загруженных файлов.
+  worker:
+    image: barysguard-server:stand
+    pull_policy: never
+    command: ["barysguard-admin", "worker"]
+    environment: *server-environment
+    volumes:
+      - artifacts:/var/lib/barysguard/artifacts
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   nginx:
     build:
       context: ../..

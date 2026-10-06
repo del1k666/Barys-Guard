@@ -10,10 +10,12 @@ from barysguard.db.models.user import UserRole
 from barysguard.db.session import create_engine_from_url, session_factory
 from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
 from barysguard.pki.provider import get_ca
+from barysguard.services.demo_artifacts import seed_demo_artifacts
 from barysguard.services.demo_events import seed_demo_events
 from barysguard.services.event_partitions import ensure_event_partitions
 from barysguard.services.inspection.rules import seed_rules
 from barysguard.services.users import create_account, username_taken
+from barysguard.storage.artifact_store import build_store
 
 
 async def _create_user(
@@ -115,15 +117,22 @@ async def _seed_demo_events() -> int:
         print("seed-demo-events работает только на dev-стенде: задайте BG_STAND=1.")
         return 1
 
+    artifacts = None
     engine = create_engine_from_url(settings.database_url)
     try:
         async with session_factory(engine)() as session:
             result = await seed_demo_events(session)
+            store = build_store(settings)
+            artifacts = await seed_demo_artifacts(session, store) if store else None
             await session.commit()
     finally:
         await engine.dispose()
 
     print(f"агентов: {result.agents}, добавлено событий: {result.inserted}")
+    if artifacts is None:
+        print("демо-артефакты пропущены: не задан BG_ARTIFACT_MASTER_KEY")
+    else:
+        print(f"демо-артефакты: событий добавлено {artifacts.inserted}")
     return 0
 
 

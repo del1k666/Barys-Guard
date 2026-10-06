@@ -108,6 +108,12 @@ Assert-Step 'агенты прислали события start (канал agen
         })
 }
 
+Assert-Step 'список инцидентов отвечает (воркер инспекции)' {
+    $r = Invoke-Api -Method GET -Url "$base/api/v1/incidents?limit=5" -Session $session
+    Expect-Equal $r.Status 200 'GET /api/v1/incidents'
+    if ($null -eq $r.Json.items) { throw 'в ответе нет поля items' }
+}
+
 Assert-Step 'агенты распределены по группам Бухгалтерия (3) и ИТ (2)' {
     $r = Invoke-Api -Method GET -Url "$base/api/v1/groups" -Session $session
     Expect-Equal $r.Status 200 'GET /api/v1/groups'
