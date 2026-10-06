@@ -9,6 +9,17 @@ from barysguard.db.models.config import AgentConfig, ConfigScope
 from barysguard.db.models.console_session import ConsoleSession
 from barysguard.db.models.enrollment import EnrollmentToken
 from barysguard.db.models.event import Event
+from barysguard.db.models.inspection import (
+    ArtifactScan,
+    Dictionary,
+    DictionaryTerm,
+    EventQueue,
+    Incident,
+    IncidentEvent,
+    Rule,
+    RuleVersion,
+    Verdict,
+)
 from barysguard.db.models.user import User, UserRole
 
 __all__ = [
@@ -18,15 +29,24 @@ __all__ = [
     "AgentGroup",
     "AgentStatus",
     "Artifact",
+    "ArtifactScan",
     "AuditLog",
     "Command",
     "CommandStatus",
     "CommandType",
     "ConfigScope",
     "ConsoleSession",
+    "Dictionary",
+    "DictionaryTerm",
     "EnrollmentToken",
     "Event",
+    "EventQueue",
+    "Incident",
+    "IncidentEvent",
+    "Rule",
+    "RuleVersion",
     "UploadSession",
     "User",
     "UserRole",
+    "Verdict",
 ]

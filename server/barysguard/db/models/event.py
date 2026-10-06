@@ -36,3 +36,6 @@ class Event(Base):
     labels: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     artifact_sha256: Mapped[str | None] = mapped_column(Text)
     severity: Mapped[str] = mapped_column(Text, server_default="info")
+    # Заполняет воркер инспекции. Внешнего ключа нет: ссылки с партиционированной
+    # таблицы ограничены, целостность обеспечивает код.
+    verdict_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)

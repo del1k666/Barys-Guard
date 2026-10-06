@@ -78,6 +78,18 @@ class Settings(BaseSettings):
     artifact_chunk_bytes: int = 1024 * 1024
     upload_session_ttl_hours: int = 24
 
+    # Воркер инспекции содержимого (B2).
+    worker_batch: int = 10
+    worker_poll_seconds: float = 2.0
+    worker_lock_seconds: int = 300
+    worker_max_attempts: int = 3
+    inspect_max_text_bytes: int = 20 * 1024 * 1024
+    inspect_max_unpacked_bytes: int = 200 * 1024 * 1024
+    inspect_max_entries: int = 10000
+    inspect_max_ratio: int = 100
+    inspect_timeout_seconds: int = 30
+    incident_min_score: int = 20
+
 
 @lru_cache
 def get_settings() -> Settings:
