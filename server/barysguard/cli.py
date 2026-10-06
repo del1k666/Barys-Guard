@@ -9,6 +9,7 @@ from barysguard.devstand import DEFAULT_GROUPS, StandOptions, bootstrap_stand
 from barysguard.pki.provider import get_ca
 from barysguard.services.demo_events import seed_demo_events
 from barysguard.services.event_partitions import ensure_event_partitions
+from barysguard.services.inspection.rules import seed_rules
 from barysguard.services.users import create_account, username_taken
 
 
@@ -74,6 +75,7 @@ async def _bootstrap_dev() -> int:
     try:
         async with session_factory(engine)() as session:
             report = await bootstrap_stand(session, get_ca(), options)
+            await seed_rules(session)
             await session.commit()
     finally:
         await engine.dispose()
@@ -122,6 +124,22 @@ async def _seed_demo_events() -> int:
     return 0
 
 
+async def _seed_rules() -> int:
+    engine = create_engine_from_url(get_settings().database_url)
+    try:
+        async with session_factory(engine)() as session:
+            report = await seed_rules(session)
+            await session.commit()
+    finally:
+        await engine.dispose()
+
+    print(
+        f"правил создано: {report.rules_created}, версий: {report.versions_created}, "
+        f"терминов добавлено: {report.terms_added}"
+    )
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="barysguard-admin")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -142,6 +160,8 @@ def main() -> None:
         "seed-demo-events", help="демонстрационные события file/usb для стенда (нужен BG_STAND=1)"
     )
 
+    sub.add_parser("seed-rules", help="завести встроенные правила инспекции (идемпотентно)")
+
     partitions = sub.add_parser("ensure-partitions", help="создать разделы таблицы events")
     partitions.add_argument("--months-ahead", type=int, default=2)
 
@@ -155,5 +175,7 @@ def main() -> None:
         raise SystemExit(asyncio.run(_bootstrap_dev()))
     if args.command == "seed-demo-events":
         raise SystemExit(asyncio.run(_seed_demo_events()))
+    if args.command == "seed-rules":
+        raise SystemExit(asyncio.run(_seed_rules()))
     if args.command == "ensure-partitions":
         raise SystemExit(asyncio.run(_ensure_partitions(args.months_ahead)))

@@ -12,6 +12,7 @@ from sqlalchemy import delete, func, select
 from barysguard.cli import main
 from barysguard.db.models.agent import AgentGroup
 from barysguard.db.models.enrollment import EnrollmentToken
+from barysguard.db.models.inspection import Rule
 from barysguard.db.models.user import User, UserRole
 from barysguard.devstand import StandGroup, StandOptions, bootstrap_stand
 from barysguard.pki.ca import ensure_ca
@@ -282,6 +283,9 @@ async def test_bootstrap_dev_creates_the_stand_state(stand_env, session, capsys,
     assert (tmp_path / "enroll" / "cli.token").read_text().startswith("BG-ENROLL-")
     assert (tmp_path / "tls" / "server.crt").exists()
     assert stand_env["BG_BOOTSTRAP_ADMIN_USERNAME"] in capsys.readouterr().out
+    # Стенд сразу получает встроенные правила инспекции.
+    rule_keys = (await session.execute(select(Rule.key))).scalars().all()
+    assert sorted(rule_keys) == ["card", "iin_bin", "markings"]
 
 
 async def test_bootstrap_dev_refuses_outside_a_stand(stand_env, monkeypatch, capsys, tmp_path):
