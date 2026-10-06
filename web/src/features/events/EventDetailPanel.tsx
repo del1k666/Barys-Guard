@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import type { EventSummary } from "../../api/types";
 import { Modal } from "../../components/Modal";
-import { SeverityBadge } from "../../components/StatusBadge";
+import { SeverityBadge, VerdictBadge } from "../../components/StatusBadge";
 import { ru } from "../../i18n/ru";
 import { describeEvent } from "../../lib/eventSummary";
 import { formatDateTime } from "../../lib/format";
@@ -37,6 +37,12 @@ function Body({ event }: { event: EventSummary }) {
         <Fact label={ru.events.columns.severity}>
           <SeverityBadge severity={event.severity} />
         </Fact>
+        {event.verdict ? (
+          <Fact label={ru.events.detail.verdict}>
+            <VerdictBadge status={event.verdict.status} />{" "}
+            {ru.events.detail.verdictScore(event.verdict.score)}
+          </Fact>
+        ) : null}
         <Fact label={ru.events.columns.channel}>
           {ru.events.channels[event.channel] ?? event.channel} · {event.action}
         </Fact>

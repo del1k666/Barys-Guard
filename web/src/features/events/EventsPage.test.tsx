@@ -164,6 +164,41 @@ describe("EventsPage", () => {
     expect(within(dialog).queryByText("Не загружено")).not.toBeInTheDocument();
   });
 
+  it("у события с вердиктом «опасно» в строке бейдж, в панели вердикт и оценка", async () => {
+    setup(eventsPage([{ ...COPY, verdict: { status: "flagged", score: 80, severity: "high" } }]));
+    renderPage(<EventsPage />, route());
+
+    const row = (await screen.findByRole("link", { name: "ws-01" })).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Опасно")).toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole("button", { name: "Подробнее" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Вердикт")).toBeInTheDocument();
+    expect(within(dialog).getByText("Опасно")).toBeInTheDocument();
+    expect(within(dialog).getByText(/оценка 80/)).toBeInTheDocument();
+  });
+
+  it("чистый вердикт рисуется бейджем «Чисто»", async () => {
+    setup(eventsPage([{ ...COPY, verdict: { status: "clean", score: 0, severity: "info" } }]));
+    renderPage(<EventsPage />, route());
+
+    const row = (await screen.findByRole("link", { name: "ws-01" })).closest("tr") as HTMLElement;
+    expect(within(row).getByText("Чисто")).toBeInTheDocument();
+  });
+
+  it("без вердикта в строке прочерк, а в панели нет факта «Вердикт»", async () => {
+    setup(eventsPage([{ ...COPY, verdict: null }]));
+    renderPage(<EventsPage />, route());
+
+    const row = (await screen.findByRole("link", { name: "ws-01" })).closest("tr") as HTMLElement;
+    expect(within(row).getByText("—")).toBeInTheDocument();
+    expect(within(row).queryByText("Опасно")).not.toBeInTheDocument();
+
+    await userEvent.click(within(row).getByRole("button", { name: "Подробнее" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByText("Вердикт")).not.toBeInTheDocument();
+  });
+
   it("пустой журнал объясняет, что событий нет", async () => {
     setup(eventsPage([]));
     renderPage(<EventsPage />, route());

@@ -6,7 +6,7 @@ import { Button } from "../../components/Button";
 import { Select } from "../../components/Select";
 import { Spinner } from "../../components/Spinner";
 import { EmptyState, ErrorState } from "../../components/States";
-import { SeverityBadge } from "../../components/StatusBadge";
+import { SeverityBadge, VerdictBadge } from "../../components/StatusBadge";
 import { Table } from "../../components/Table";
 import { ru } from "../../i18n/ru";
 import {
@@ -83,6 +83,7 @@ export function EventsPage() {
               <th>{ru.events.columns.channel}</th>
               <th>{ru.events.columns.action}</th>
               <th>{ru.events.columns.severity}</th>
+              <th>{ru.events.columns.verdict}</th>
               <th>{ru.events.columns.subject}</th>
               <th />
             </tr>
@@ -98,6 +99,9 @@ export function EventsPage() {
                 <td>{event.action}</td>
                 <td>
                   <SeverityBadge severity={event.severity} />
+                </td>
+                <td>
+                  {event.verdict ? <VerdictBadge status={event.verdict.status} /> : ru.common.none}
                 </td>
                 <td className={styles.subject}>{describeEvent(event)}</td>
                 <td>
