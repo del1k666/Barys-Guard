@@ -1,6 +1,7 @@
 """Воркер инспекции: берёт задачи из очереди, сканирует содержимое, пишет вердикты."""
 
 import asyncio
+import contextlib
 import logging
 import time
 from datetime import UTC, datetime
@@ -172,6 +173,7 @@ async def run_once(
     settings: Settings,
     *,
     now: datetime | None = None,
+    stop: asyncio.Event | None = None,
 ) -> int:
     """Один проход: закрыть исчерпавшие попытки, забрать пачку, обработать. Возвращает её размер."""
     moment = now or datetime.now(UTC)
@@ -179,7 +181,15 @@ async def run_once(
         for exhausted in await fail_exhausted(
             session, max_attempts=settings.worker_max_attempts, now=moment
         ):
-            await _record_failure(session, exhausted)
+            try:
+                async with session.begin_nested():
+                    await _record_failure(session, exhausted)
+            except Exception:
+                # Одна неудачная запись об ошибке не должна блокировать остальные задачи.
+                logger.exception(
+                    "не удалось записать вердикт об ошибке",
+                    extra={"task_id": exhausted.id, "attempt": exhausted.attempts},
+                )
         tasks = await claim_batch(
             session,
             limit=settings.worker_batch,
@@ -194,6 +204,8 @@ async def run_once(
         ruleset = await load_ruleset(session)
 
     for task in tasks:
+        if stop is not None and stop.is_set():
+            break  # остановка: текущая задача дописана, остальные ждут истечения блокировки
         async with maker() as session:
             try:
                 await process_task(session, store, ruleset, task, settings)
@@ -226,20 +238,27 @@ async def run_worker(settings: Settings, stop: asyncio.Event) -> None:
     logger.info("воркер инспекции запущен")
     try:
         while not stop.is_set():
-            if time.monotonic() - last_sweep >= SWEEP_INTERVAL:
-                async with maker() as session:
-                    queued = await enqueue_missed(session, datetime.now(UTC))
-                    await session.commit()
-                if queued:
-                    logger.info("страховка поставила в очередь события", extra={"count": queued})
-                last_sweep = time.monotonic()
+            processed = 0
+            try:
+                if time.monotonic() - last_sweep >= SWEEP_INTERVAL:
+                    async with maker() as session:
+                        queued = await enqueue_missed(session, datetime.now(UTC))
+                        await session.commit()
+                    if queued:
+                        logger.info(
+                            "страховка поставила в очередь события", extra={"count": queued}
+                        )
+                    last_sweep = time.monotonic()
 
-            processed = await run_once(maker, store, settings)
-            if processed == 0:
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
-                except TimeoutError:
-                    pass
+                processed = await run_once(maker, store, settings, stop=stop)
+            except Exception:
+                # Временный сбой (БД и т. п.) не должен убивать демон: пауза и новая итерация.
+                logger.exception("итерация воркера не удалась")
+            else:
+                if processed:
+                    continue
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(stop.wait(), timeout=settings.worker_poll_seconds)
     finally:
         await engine.dispose()
         logger.info("воркер инспекции остановлен")

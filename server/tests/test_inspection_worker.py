@@ -231,3 +231,84 @@ async def test_an_event_with_a_verdict_is_skipped(
 
     assert (await session.scalars(select(Verdict))).all() == []
     assert (await session.scalars(select(EventQueue))).all() == []
+
+
+async def test_run_worker_survives_a_failing_iteration(
+    app_client, maker, settings, monkeypatch
+) -> None:
+    import asyncio
+
+    from barysguard.services.inspection import worker as worker_module
+
+    monkeypatch.setenv("BG_WORKER_POLL_SECONDS", "0.01")
+    get_settings.cache_clear()
+    quick = get_settings()
+    stop = asyncio.Event()
+    calls: list[int] = []
+
+    async def flaky(*args, **kwargs) -> int:
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("transient")
+        stop.set()
+        return 0
+
+    monkeypatch.setattr(worker_module, "run_once", flaky)
+
+    await asyncio.wait_for(worker_module.run_worker(quick, stop), timeout=10)
+
+    assert len(calls) == 2
+
+
+async def test_a_failing_failure_record_does_not_block_other_tasks(
+    app_client, session, maker, store, settings, tmp_path, monkeypatch
+) -> None:
+    from datetime import timedelta
+
+    from barysguard.services.inspection import worker as worker_module
+
+    _, sha, (event,) = await _prepare(session, store, tmp_path, app_client, SENSITIVE, "w-poison")
+    store.delete(sha)
+    monkeypatch.setenv("BG_WORKER_LOCK_SECONDS", "1")
+    get_settings.cache_clear()
+    quick = get_settings()
+    base = datetime.now(UTC)
+    for step in range(3):
+        await run_once(maker, store, quick, now=base + timedelta(seconds=step * 10))
+
+    # Вторая, здоровая задача появляется, пока первая исчерпана.
+    agent = (await session.scalars(select(Event.agent_id))).first()
+    good_sha = await _artifact(session, store, tmp_path, b"just a lunch menu")
+    good = await _event(session, agent, good_sha)
+    await enqueue_for_artifact(session, good_sha)
+    await session.commit()
+
+    async def broken(*args, **kwargs) -> None:
+        raise RuntimeError("poisoned")
+
+    monkeypatch.setattr(worker_module, "_record_failure", broken)
+
+    processed = await run_once(maker, store, quick, now=base + timedelta(seconds=60))
+
+    assert processed == 1
+    await session.rollback()
+    session.expire_all()
+    verdicts = (await session.scalars(select(Verdict))).all()
+    assert [v.status for v in verdicts] == ["clean"]
+    await session.refresh(good)
+    assert good.verdict_id == verdicts[0].id
+
+
+async def test_run_once_with_stop_set_does_not_process_claimed_tasks(
+    app_client, session, maker, store, settings, tmp_path
+) -> None:
+    import asyncio
+
+    await _prepare(session, store, tmp_path, app_client, SENSITIVE, "w-stop")
+    stop = asyncio.Event()
+    stop.set()
+
+    await run_once(maker, store, settings, stop=stop)
+
+    await session.rollback()
+    assert (await session.scalars(select(Verdict))).all() == []
