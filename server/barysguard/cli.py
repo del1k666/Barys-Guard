@@ -1,5 +1,8 @@
 import argparse
 import asyncio
+import contextlib
+import logging
+import signal
 import uuid
 
 from barysguard.core.config import get_settings
@@ -140,6 +143,28 @@ async def _seed_rules() -> int:
     return 0
 
 
+async def _worker() -> int:
+    from barysguard.services.inspection.worker import WorkerConfigError, run_worker
+
+    settings = get_settings()
+    logging.basicConfig(
+        level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
+
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for name in (signal.SIGINT, signal.SIGTERM):
+        # Windows: обработчики сигналов цикла недоступны
+        with contextlib.suppress(NotImplementedError):
+            loop.add_signal_handler(name, stop.set)
+    try:
+        await run_worker(settings, stop)
+    except WorkerConfigError as exc:
+        print(str(exc))
+        return 1
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="barysguard-admin")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -162,6 +187,8 @@ def main() -> None:
 
     sub.add_parser("seed-rules", help="завести встроенные правила инспекции (идемпотентно)")
 
+    sub.add_parser("worker", help="воркер инспекции содержимого (очередь, правила, вердикты)")
+
     partitions = sub.add_parser("ensure-partitions", help="создать разделы таблицы events")
     partitions.add_argument("--months-ahead", type=int, default=2)
 
@@ -179,3 +206,8 @@ def main() -> None:
         raise SystemExit(asyncio.run(_seed_rules()))
     if args.command == "ensure-partitions":
         raise SystemExit(asyncio.run(_ensure_partitions(args.months_ahead)))
+    if args.command == "worker":
+        try:
+            raise SystemExit(asyncio.run(_worker()))
+        except KeyboardInterrupt:
+            raise SystemExit(0) from None
