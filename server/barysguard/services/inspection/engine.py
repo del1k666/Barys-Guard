@@ -47,6 +47,8 @@ def scan_bytes(
         found = scanner.finish()
     except ExtractFailure as failure:
         return ScanOutcome(failure.status, False, {})
+    except Exception:  # noqa: BLE001 - вход недоверенный: сбой разбора — свойство файла, не инфраструктуры
+        return ScanOutcome("error", False, {})
 
     findings = {
         key: {"count": finding.count, "samples": finding.samples}

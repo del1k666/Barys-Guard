@@ -3,6 +3,7 @@
 import io
 import zipfile
 
+import pytest
 from pypdf import PdfWriter
 
 from barysguard.services.inspection.detectors import CardDetector, IinBinDetector
@@ -214,3 +215,43 @@ def test_timeout_gives_an_error_status() -> None:
 
 def test_extension_is_taken_from_a_windows_path() -> None:
     assert _scan("E:\\Папка с пробелами\\Файл.TXT", f"{IIN}".encode()).status == "ok"
+
+
+def _corrupt_member_zip() -> bytes:
+    text = "".join(f"строка {i} слово{i % 7} " for i in range(20000))
+    document = (
+        f'<w:document xmlns:w="{W}"><w:body><w:p><w:t>{text}</w:t></w:p></w:body></w:document>'
+    )
+    return _zip({"word/document.xml": document})
+
+
+def test_corrupt_deflate_member_is_an_error() -> None:
+    data = bytearray(_corrupt_member_zip())
+    info = zipfile.ZipFile(io.BytesIO(bytes(data))).infolist()[0]
+    start = info.header_offset + 30 + len(info.filename.encode()) + 100
+    for offset in range(start, start + 200):
+        data[offset] ^= 0xFF
+
+    assert _scan("bad.docx", bytes(data)).status == "error"
+
+
+def test_truncated_deflate_member_is_an_error() -> None:
+    data = _corrupt_member_zip()
+    info = zipfile.ZipFile(io.BytesIO(data)).infolist()[0]
+    body = info.header_offset + 30 + len(info.filename.encode())
+    # Центральный каталог цел, но поток сжатых данных обрезан: нули вместо хвоста потока.
+    cut = body + info.compress_size // 2
+    broken = (
+        data[:cut] + b"\x00" * (body + info.compress_size - cut) + data[body + info.compress_size :]
+    )
+
+    assert _scan("cut.docx", broken).status == "error"
+
+
+def test_unexpected_parser_failure_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("barysguard.services.inspection.engine.extract", boom)
+
+    assert _scan("a.txt", b"hello").status == "error"

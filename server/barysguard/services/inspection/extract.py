@@ -10,6 +10,7 @@ import re
 import time
 import xml.etree.ElementTree as ET  # noqa: S405 - XML Office без DTD, DOCTYPE отсекается вручную
 import zipfile
+import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import PureWindowsPath
@@ -145,7 +146,15 @@ def _read_member(archive: zipfile.ZipFile, name: str, budget: _Budget) -> bytes:
     try:
         with archive.open(name) as member:
             raw = member.read(budget.left + 1)
-    except (zipfile.BadZipFile, KeyError, NotImplementedError, RuntimeError):
+    except (
+        zipfile.BadZipFile,
+        KeyError,
+        NotImplementedError,
+        RuntimeError,
+        zlib.error,
+        EOFError,
+        OSError,
+    ):
         raise ExtractFailure("error") from None
     if len(raw) > budget.left:
         raise ExtractFailure("too_large")
