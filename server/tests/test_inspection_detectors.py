@@ -36,10 +36,10 @@ def test_valid_iin(number: str) -> None:
     [
         "900101300018",  # неверный контрольный разряд
         IIN_BOTH_TEN,  # оба прохода дают 10
-        "901301300010",  # месяц 13
-        "900230300010",  # 30 февраля
-        "900101000010",  # 7-я цифра 0
-        "900101700010",  # 7-я цифра 7
+        "901301300007",  # месяц 13, контрольный разряд верен
+        "900230300009",  # 30 февраля, контрольный разряд верен
+        "900101000008",  # 7-я цифра 0, контрольный разряд верен
+        "900101700002",  # 7-я цифра 7, контрольный разряд верен
     ],
 )
 def test_invalid_iin(number: str) -> None:
@@ -49,8 +49,8 @@ def test_invalid_iin(number: str) -> None:
 def test_valid_and_invalid_bin() -> None:
     assert is_bin(BIN_VALID) is True
     assert is_bin("120340000015") is False  # контрольный разряд
-    assert is_bin("121340000010") is False  # месяц 13
-    assert is_bin("120310000010") is False  # 5-я цифра 1
+    assert is_bin("121340000007") is False  # месяц 13, контрольный разряд верен
+    assert is_bin("120310000000") is False  # 5-я цифра 1, контрольный разряд верен
 
 
 @pytest.mark.parametrize("number", [VISA, MASTERCARD, AMEX, MIR])
