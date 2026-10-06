@@ -312,3 +312,37 @@ async def test_run_once_with_stop_set_does_not_process_claimed_tasks(
 
     await session.rollback()
     assert (await session.scalars(select(Verdict))).all() == []
+
+
+async def test_without_rules_nothing_is_claimed_until_rules_are_seeded(
+    app_client, session, maker, store, settings, tmp_path, caplog, monkeypatch
+) -> None:
+    import logging
+
+    # Пустой набор правил дал бы «чисто» всем событиям навсегда: воркер ждёт seed-rules.
+    # fileConfig из alembic/env.py (миграции в тестах) отключает уже созданные журналы.
+    monkeypatch.setattr(logging.getLogger("barysguard.worker"), "disabled", False)
+    agent = await enroll_agent(app_client, session, "w-norules")
+    sha = await _artifact(session, store, tmp_path, SENSITIVE)
+    event = await _event(session, agent.agent_id, sha)
+    await enqueue_for_artifact(session, sha)
+    await session.commit()
+
+    with caplog.at_level("ERROR", logger="barysguard.worker"):
+        processed = await run_once(maker, store, settings)
+
+    assert processed == 0
+    assert any(r.levelname == "ERROR" for r in caplog.records)
+    assert IIN not in caplog.text
+    await session.rollback()
+    task = (await session.scalars(select(EventQueue))).one()
+    assert (task.attempts, task.state, task.locked_until) == (0, "pending", None)
+    assert (await session.scalars(select(Verdict))).all() == []
+
+    await seed_rules(session)
+    await session.commit()
+
+    assert await run_once(maker, store, settings) == 1
+    await session.refresh(event)
+    assert event.verdict_id is not None
+    assert (await session.scalars(select(Verdict))).one().status == "flagged"

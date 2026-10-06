@@ -175,7 +175,10 @@ async def run_once(
     now: datetime | None = None,
     stop: asyncio.Event | None = None,
 ) -> int:
-    """Один проход: закрыть исчерпавшие попытки, забрать пачку, обработать. Возвращает её размер."""
+    """Один проход: закрыть исчерпавшие попытки, забрать пачку, обработать. Возвращает её размер.
+
+    Пока правил нет (seed-rules не выполнялся), задачи не берутся и возвращается 0.
+    """
     moment = now or datetime.now(UTC)
     async with maker() as session:
         for exhausted in await fail_exhausted(
@@ -190,6 +193,15 @@ async def run_once(
                     "не удалось записать вердикт об ошибке",
                     extra={"task_id": exhausted.id, "attempt": exhausted.attempts},
                 )
+        # Набор правил читается до захвата задач: без правил каждый файл получил бы
+        # вердикт «чисто» навсегда, поэтому задачи остаются в очереди до seed-rules.
+        ruleset = await load_ruleset(session)
+        if not ruleset.rules:
+            await session.commit()
+            logger.error(
+                "нет правил инспекции: задачи не берутся, выполните barysguard-admin seed-rules"
+            )
+            return 0
         tasks = await claim_batch(
             session,
             limit=settings.worker_batch,
@@ -199,9 +211,6 @@ async def run_once(
         await session.commit()
     if not tasks:
         return 0
-
-    async with maker() as session:
-        ruleset = await load_ruleset(session)
 
     for task in tasks:
         if stop is not None and stop.is_set():
