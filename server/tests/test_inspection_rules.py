@@ -30,9 +30,7 @@ async def test_seed_is_idempotent(app_client, session) -> None:
     assert len((await session.scalars(select(RuleVersion))).all()) == 3
 
 
-async def test_changed_dictionary_gets_a_new_rule_version_and_ruleset_hash(
-    app_client, session
-) -> None:
+async def test_seed_does_not_publish_versions_for_edited_dictionary(app_client, session) -> None:
     await seed_rules(session)
     await session.commit()
     before = await load_ruleset(session)
@@ -44,7 +42,7 @@ async def test_changed_dictionary_gets_a_new_rule_version_and_ruleset_hash(
     await session.commit()
     after = await load_ruleset(session)
 
-    assert report.versions_created == 1
+    assert report.versions_created == 0
     assert after.hash != before.hash
     markings_versions = (
         await session.scalars(
@@ -54,7 +52,7 @@ async def test_changed_dictionary_gets_a_new_rule_version_and_ruleset_hash(
             .order_by(RuleVersion.version)
         )
     ).all()
-    assert list(markings_versions) == [1, 2]
+    assert list(markings_versions) == [1]
 
 
 async def test_ruleset_builds_detectors_and_weights(app_client, session) -> None:
@@ -107,7 +105,7 @@ async def test_reseeding_does_not_restore_a_deleted_builtin_term(app_client, ses
     await session.commit()
     after = await load_ruleset(session)
 
-    assert report.terms_added == 0 and report.versions_created == 1
+    assert report.terms_added == 0 and report.versions_created == 0
     terms = set((await session.scalars(select(DictionaryTerm.term))).all())
     assert "секретно" not in terms
     assert terms == set(BUILTIN_TERMS) - {"секретно"}
@@ -119,7 +117,7 @@ async def test_reseeding_does_not_restore_a_deleted_builtin_term(app_client, ses
             .order_by(RuleVersion.version)
         )
     ).all()
-    assert list(markings_versions) == [1, 2]
+    assert list(markings_versions) == [1]
     assert after.hash != before.hash
 
     again = await seed_rules(session)
@@ -140,3 +138,33 @@ async def test_particle_board_is_not_a_marking(app_client, session) -> None:
     assert found["markings"].count == 0
     assert "дсп" not in BUILTIN_TERMS
     assert "для служебного пользования" in BUILTIN_TERMS
+
+
+async def test_seed_marks_the_three_rules_builtin(app_client, session) -> None:
+    await seed_rules(session)
+    await session.commit()
+
+    rows = (await session.scalars(select(Rule))).all()
+
+    assert {r.key: r.builtin for r in rows} == {"iin_bin": True, "card": True, "markings": True}
+
+
+async def test_seed_never_overwrites_operator_changes(app_client, session) -> None:
+    await seed_rules(session)
+    await session.commit()
+    card = (await session.scalars(select(Rule).where(Rule.key == "card"))).one()
+    latest = (
+        await session.scalars(select(RuleVersion).where(RuleVersion.rule_id == card.id))
+    ).one()
+    session.add(
+        RuleVersion(rule_id=card.id, version=2, params={**latest.params, "weight": 99, "cap": 7})
+    )
+    await session.commit()
+
+    report = await seed_rules(session)
+    await session.commit()
+    ruleset = await load_ruleset(session)
+
+    assert (report.rules_created, report.versions_created) == (0, 0)
+    weights = {w.key: (w.weight, w.cap) for w in ruleset.weights()}
+    assert weights["card"] == (99, 7)

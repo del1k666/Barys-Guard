@@ -90,6 +90,11 @@ class Settings(BaseSettings):
     inspect_timeout_seconds: int = 30
     incident_min_score: int = 20
 
+    # Правила-шаблоны (RE2) и проверка шаблона в консоли.
+    regex_max_pattern: int = 500
+    regex_max_match: int = 200
+    rules_test_max_text: int = 20000
+
 
 @lru_cache
 def get_settings() -> Settings:

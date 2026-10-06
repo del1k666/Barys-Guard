@@ -53,7 +53,12 @@ class Rule(Base):
     kind: Mapped[str] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, server_default="true")
+    # Встроенные правила (ИИН/БИН, карты, грифы): их нельзя удалить и нельзя менять тип и ключ.
+    builtin: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class RuleVersion(Base):

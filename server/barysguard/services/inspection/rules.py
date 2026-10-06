@@ -64,12 +64,11 @@ class SeedReport:
 
 
 async def seed_rules(session: AsyncSession) -> SeedReport:
-    """Заводит встроенные правила и словарь. Повторный вызов ничего не дублирует.
+    """Заводит встроенные правила и словарь. Повторный вызов ничего не меняет.
 
-    Термины словаря добавляются только при его создании; после правки терминов
-    оператором повторный запуск публикует новую версию правила (сменился terms_hash).
-    Параметры возвращаются к встроенным: ручные правки весов (когда появится
-    редактор) повторный запуск перезапишет новой версией.
+    Правило и его версия 1 создаются только если их ещё нет; веса, версии и термины,
+    которые поменял оператор, не перезаписываются. Новые значения по умолчанию
+    в будущих релизах применяются отдельной миграцией данных.
     """
     added: list[str] = []
     dictionary = await session.scalar(select(Dictionary).where(Dictionary.key == MARKINGS_KEY))
@@ -94,7 +93,12 @@ async def seed_rules(session: AsyncSession) -> SeedReport:
     for definition in BUILTIN_RULES:
         rule = await session.scalar(select(Rule).where(Rule.key == definition["key"]))
         if rule is None:
-            rule = Rule(key=definition["key"], kind=definition["kind"], title=definition["title"])
+            rule = Rule(
+                key=definition["key"],
+                kind=definition["kind"],
+                title=definition["title"],
+                builtin=True,
+            )
             session.add(rule)
             await session.flush()
             rules_created += 1
@@ -110,14 +114,8 @@ async def seed_rules(session: AsyncSession) -> SeedReport:
             .order_by(RuleVersion.version.desc())
             .limit(1)
         )
-        if latest is None or latest.params != params:
-            session.add(
-                RuleVersion(
-                    rule_id=rule.id,
-                    version=latest.version + 1 if latest else 1,
-                    params=params,
-                )
-            )
+        if latest is None:
+            session.add(RuleVersion(rule_id=rule.id, version=1, params=params))
             versions_created += 1
 
     await session.flush()
