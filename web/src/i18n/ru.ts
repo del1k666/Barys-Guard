@@ -273,7 +273,6 @@ export const ru = {
     emptyFilterHint: "Измените фильтры или сбросьте их.",
     detail: {
       title: "Инцидент",
-      loadError: "Не удалось загрузить инцидент",
       severity: "Критичность",
       score: "Оценка",
       status: "Статус",

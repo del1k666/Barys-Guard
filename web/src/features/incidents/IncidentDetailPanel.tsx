@@ -35,12 +35,13 @@ export function IncidentDetailPanel({
 function Body({ incidentId }: { incidentId: string }) {
   const incident = useIncident(incidentId);
 
-  if (incident.isPending) return <Spinner label={ru.common.loading} />;
+  // Сбой фонового перечитывания не должен стирать уже показанный инцидент.
+  if (incident.data) return <Detail incident={incident.data} />;
   if (incident.isError) {
     return <ErrorState error={incident.error} onRetry={() => void incident.refetch()} />;
   }
 
-  return <Detail incident={incident.data} />;
+  return <Spinner label={ru.common.loading} />;
 }
 
 function Detail({ incident }: { incident: IncidentDetail }) {

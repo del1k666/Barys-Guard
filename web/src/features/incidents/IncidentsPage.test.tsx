@@ -223,7 +223,8 @@ describe("IncidentDetailPanel", () => {
     });
     // Список перечитан: в таблице тоже новый статус.
     await waitFor(() => {
-      const row = within(screen.getByRole("table", { name: "Список инцидентов" })).getByRole("link", { name: "ws-01" }).closest("tr") as HTMLElement;
+      const table = screen.getByRole("table", { name: "Список инцидентов" });
+      const row = within(table).getByRole("link", { name: "ws-01" }).closest("tr") as HTMLElement;
       expect(within(row).getByText("Принят")).toBeInTheDocument();
     });
   });
@@ -285,6 +286,28 @@ describe("IncidentDetailPanel", () => {
     await within(dialog).findByText("Опасно");
     expect(within(dialog).queryByRole("button", { name: "Принять" })).not.toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: "Закрыть" })).not.toBeInTheDocument();
+  });
+
+  it("сбой фонового перечитывания не заменяет панель ошибкой", async () => {
+    let detailCalls = 0;
+    mockApi({
+      "GET /auth/me": json(200, OPERATOR),
+      "GET /incidents": incidentPage([INCIDENT]),
+      [`GET /incidents/${ID}`]: () => {
+        detailCalls += 1;
+        return detailCalls === 1 ? json(200, DETAIL) : json(500, { detail: "boom" });
+      },
+      [`PATCH /incidents/${ID}`]: json(200, { ...DETAIL, status: "acknowledged" }),
+    });
+    renderPage(<IncidentsPage />, route());
+    const dialog = await openPanel();
+
+    await userEvent.click(await within(dialog).findByRole("button", { name: "Принять" }));
+
+    await waitFor(() => expect(detailCalls).toBeGreaterThan(1));
+    expect(await screen.findByText("Инцидент принят")).toBeInTheDocument();
+    expect(within(dialog).getByText("ИИН/БИН")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
   });
 
   it("ошибка загрузки деталей показывается внутри панели", async () => {
