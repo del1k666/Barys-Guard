@@ -170,6 +170,42 @@ async def test_status_changes_are_validated_and_audited(app_client, session) -> 
     assert list(actions).count("incident.update") == 2  # ack и close; повтор не пишется
     await session.refresh(incident)
     assert incident.closed_at is not None
+    # Отказ 409 ничего не меняет: инцидент остаётся закрытым с прежним временем закрытия.
+    closed_at = incident.closed_at
+    assert (await app_client.patch(url, json={"status": "acknowledged"})).status_code == 409
+    await session.refresh(incident)
+    assert (incident.status, incident.closed_at) == ("closed", closed_at)
+
+
+async def test_concurrent_close_is_not_overwritten_by_a_patch(app_client, session) -> None:
+    import asyncio
+
+    await login_as(app_client, session, username="inc-race", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-race")
+    incident_id = (await _flagged(session, agent.agent_id)).id
+    url = f"/api/v1/incidents/{incident_id}"
+
+    # Другая транзакция закрывает инцидент и держит блокировку строки.
+    locked = (
+        await session.scalars(select(Incident).where(Incident.id == incident_id).with_for_update())
+    ).one()
+    locked.status = "closed"
+    closed_at = datetime.now(UTC)
+    locked.closed_at = closed_at
+    await session.flush()
+
+    patch = asyncio.create_task(app_client.patch(url, json={"status": "acknowledged"}))
+    await asyncio.sleep(0.5)
+    waited = not patch.done()
+    await session.commit()
+    response = await asyncio.wait_for(patch, timeout=10)
+
+    assert waited  # PATCH ждёт блокировку, а не читает устаревший статус
+    assert response.status_code == 409
+    session.expire_all()
+    current = await session.get(Incident, incident_id)
+    assert current is not None
+    assert (current.status, current.closed_at) == ("closed", closed_at)
 
 
 async def test_events_carry_the_verdict(app_client, session) -> None:

@@ -99,19 +99,21 @@ async def list_incidents(
 
 
 async def _visible_incident(
-    session: AsyncSession, user: User, incident_id: uuid.UUID
+    session: AsyncSession, user: User, incident_id: uuid.UUID, *, lock: bool = False
 ) -> tuple[Incident, str]:
+    """Инцидент из области пользователя; `lock` — блокировка строки до конца транзакции."""
     conditions: list[ColumnElement[bool]] = [Incident.id == incident_id]
     visible = await scope_group_ids(session, user)
     if visible is not None:
         conditions.append(Agent.group_id.in_(visible))
-    row = (
-        await session.execute(
-            select(Incident, Agent.hostname)
-            .join(Agent, Agent.id == Incident.agent_id)
-            .where(*conditions)
-        )
-    ).one_or_none()
+    statement = (
+        select(Incident, Agent.hostname)
+        .join(Agent, Agent.id == Incident.agent_id)
+        .where(*conditions)
+    )
+    if lock:
+        statement = statement.with_for_update(of=Incident)
+    row = (await session.execute(statement)).one_or_none()
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
     return row[0], row[1]
@@ -199,7 +201,8 @@ async def update_incident(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ) -> IncidentDetail:
-    incident, hostname = await _visible_incident(session, user, incident_id)
+    # Блокировка строки: параллельное закрытие не будет перезаписано устаревшим статусом.
+    incident, hostname = await _visible_incident(session, user, incident_id, lock=True)
 
     if incident.status != payload.status:
         if incident.status == "closed":
