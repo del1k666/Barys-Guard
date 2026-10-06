@@ -269,16 +269,16 @@ export BG_TEST_DATABASE_URL="postgresql+asyncpg://barysguard:barysguard@localhos
 python -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
 ```
 
+Потеря ключа делает уже загруженные файлы нечитаемыми. На Docker-стенде используется известный ключ (`BG_STAND_ARTIFACT_KEY` в `deploy/stand/.env` его меняет).
+
 Содержимое загруженных файлов проверяет отдельный процесс, воркер инспекции:
 
 ```bash
-barysguard-admin seed-rules   # завести встроенные правила (идемпотентно)
+barysguard-admin seed-rules   # завести встроенные правила (один раз до запуска воркера)
 barysguard-admin worker       # запустить воркер
 ```
 
 Подробности — в `docs/DLP_WORKER.md`. На Docker-стенде воркер — сервис `worker`.
-
-Потеря ключа делает уже загруженные файлы нечитаемыми. На Docker-стенде используется известный ключ (`BG_STAND_ARTIFACT_KEY` в `deploy/stand/.env` его меняет).
 
 ## Развёртывание за nginx
 
