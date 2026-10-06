@@ -1,7 +1,8 @@
 """Извлечение текста из файлов с защитными пределами.
 
-Формат выбирается по расширению имени файла (из пути события), а не по типу,
-заявленному агентом. Контейнеры Office разбираются стандартной библиотекой;
+Формат определяется по содержимому (подписи PDF, OLE, zip и составу архива), а не по
+типу, заявленному агентом; расширение из пути события — лишь подсказка для текстовых
+файлов. Контейнеры Office разбираются стандартной библиотекой;
 файл читается из байтов в памяти и на диск не пишется.
 """
 
@@ -14,9 +15,17 @@ import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import PureWindowsPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pypdf import PdfReader
 
 CHUNK = 64 * 1024
 _OLE_MAGIC = bytes.fromhex("D0CF11E0A1B11AE1")
+_PDF_MAGIC = b"%PDF-"
+_ZIP_MAGIC = b"PK\x03\x04"
+# Текст без BOM UTF-16 не содержит нулевых байтов: смотрим начало файла.
+_TEXT_SNIFF = 8 * 1024
 # Степень сжатия проверяется только у крупных элементов: у мелких она ни о чём не говорит.
 _RATIO_FLOOR = 1 << 20
 _MAX_PDF_PAGES = 2000
@@ -83,16 +92,46 @@ class TextStream:
 
 
 def extract(name: str, data: bytes, limits: Limits, deadline: Deadline) -> TextStream:
+    return TextStream(_source(name, data, limits, deadline), limits.max_text, deadline)
+
+
+def _source(name: str, data: bytes, limits: Limits, deadline: Deadline) -> Iterator[str]:
+    """Формат по содержимому; расширение — лишь подсказка для текстовых файлов.
+
+    Скан кешируется по sha256 содержимого, поэтому одни и те же байты обязаны давать
+    один и тот же результат независимо от имени, под которым файл встретился первым.
+    """
     extension = PureWindowsPath(name).suffix.lower()
+    as_text = extension in TEXT_EXTENSIONS and _looks_like_text(data)
+    if data[:8] == _OLE_MAGIC:
+        # Документ Office с паролем хранится как составной файл OLE, а не как zip;
+        # старые форматы .doc/.xls тоже OLE — их не разбираем.
+        raise ExtractFailure("encrypted" if extension in OOXML_EXTENSIONS else "unsupported")
+    try:
+        if data.startswith(_PDF_MAGIC):
+            return _pdf(_open_pdf(data), deadline)
+        if data.startswith(_ZIP_MAGIC) and zipfile.is_zipfile(io.BytesIO(data)):
+            return _ooxml(data, extension, limits)
+    except ExtractFailure as failure:
+        # Текстовый файл, который лишь начинается с подписи контейнера, читается как текст.
+        if failure.status == "error" and as_text:
+            return iter([_decode(data)])
+        raise
+    if as_text:
+        return iter([_decode(data)])
+    if extension == ".pdf":
+        # Заголовок PDF может стоять не с первого байта: решает парсер (битый файл — error).
+        return _pdf(_open_pdf(data), deadline)
     if extension in OOXML_EXTENSIONS:
-        source = _ooxml(extension, data, limits)
-    elif extension == ".pdf":
-        source = _pdf(data, deadline)
-    elif extension in TEXT_EXTENSIONS:
-        source = iter([_decode(data)])
-    else:
-        raise ExtractFailure("unsupported")
-    return TextStream(source, limits.max_text, deadline)
+        # Имя обещает документ Office, а содержимое не zip — файл повреждён.
+        raise ExtractFailure("error")
+    raise ExtractFailure("unsupported")
+
+
+def _looks_like_text(data: bytes) -> bool:
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return True
+    return b"\x00" not in data[:_TEXT_SNIFF]
 
 
 def _decode(data: bytes) -> str:
@@ -114,14 +153,8 @@ class _Budget:
         self.left = left
 
 
-def _open_archive(data: bytes, limits: Limits) -> zipfile.ZipFile:
-    if data[:8] == _OLE_MAGIC:
-        # Документ Office с паролем хранится как составной файл OLE, а не как zip.
-        raise ExtractFailure("encrypted")
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(data))
-    except zipfile.BadZipFile:
-        raise ExtractFailure("error") from None
+def _check_archive(archive: zipfile.ZipFile, limits: Limits) -> None:
+    """Пределы по каталогу архива: число элементов, шифрование, размер и степень сжатия."""
     infos = archive.infolist()
     if len(infos) > limits.max_entries:
         raise ExtractFailure("too_large")
@@ -138,7 +171,6 @@ def _open_archive(data: bytes, limits: Limits) -> zipfile.ZipFile:
             raise ExtractFailure("too_large")
     if total > limits.max_unpacked:
         raise ExtractFailure("too_large")
-    return archive
 
 
 def _read_member(archive: zipfile.ZipFile, name: str, budget: _Budget) -> bytes:
@@ -208,15 +240,43 @@ def _natural(names: list[str]) -> list[str]:
     )
 
 
-def _ooxml(extension: str, data: bytes, limits: Limits) -> Iterator[str]:
-    archive = _open_archive(data, limits)
+def _office_kind(names: list[str]) -> str | None:
+    """Вид документа Office по составу архива; None — обычный архив."""
+    if "word/document.xml" in names:
+        return "docx"
+    if "xl/sharedStrings.xml" in names or any(n.startswith("xl/worksheets/") for n in names):
+        return "xlsx"
+    if any(n.startswith("ppt/slides/") for n in names):
+        return "pptx"
+    return None
+
+
+def _ooxml(data: bytes, extension: str, limits: Limits) -> Iterator[str]:
+    """Открывает архив и проверяет пределы сразу; текст отдаётся лениво."""
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except (zipfile.BadZipFile, OSError, ValueError, EOFError):
+        raise ExtractFailure("error") from None
+    kind = _office_kind(archive.namelist())
+    if kind is None:
+        if extension not in OOXML_EXTENSIONS:
+            raise ExtractFailure("unsupported")
+        # Имя обещает документ Office, а в архиве нет его частей: файл повреждён
+        # (пределы проверяются первыми — бомба остаётся «слишком большой»).
+        _check_archive(archive, limits)
+        raise ExtractFailure("error")
+    _check_archive(archive, limits)
+    return _office_text(archive, kind, limits)
+
+
+def _office_text(archive: zipfile.ZipFile, kind: str, limits: Limits) -> Iterator[str]:
     budget = _Budget(limits.max_unpacked)
     names = archive.namelist()
-    if extension == ".docx":
+    if kind == "docx":
         pattern = r"word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml"
         for part in _natural([n for n in names if re.fullmatch(pattern, n)]):
             yield from _text_runs(_read_member(archive, part, budget), "t", "p")
-    elif extension == ".pptx":
+    elif kind == "pptx":
         for part in _natural([n for n in names if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)]):
             yield from _text_runs(_read_member(archive, part, budget), "t", "p")
     else:
@@ -229,18 +289,27 @@ def _ooxml(extension: str, data: bytes, limits: Limits) -> Iterator[str]:
 # --- PDF --------------------------------------------------------------------
 
 
-def _pdf(data: bytes, deadline: Deadline) -> Iterator[str]:
+def _open_pdf(data: bytes) -> "PdfReader":
+    """Открывает PDF сразу: битый файл — error, закрытый паролем — encrypted."""
     from pypdf import PdfReader
 
     try:
         reader = PdfReader(io.BytesIO(data))
-        if reader.is_encrypted:
-            try:
-                unlocked = bool(reader.decrypt(""))
-            except Exception:  # noqa: BLE001 - любой сбой расшифровки означает «закрыт паролем»
-                unlocked = False
-            if not unlocked:
-                raise ExtractFailure("encrypted")
+        encrypted = reader.is_encrypted
+    except Exception as exc:  # noqa: BLE001 - pypdf бросает много разных исключений на битых файлах
+        raise ExtractFailure("error") from exc
+    if encrypted:
+        try:
+            unlocked = bool(reader.decrypt(""))
+        except Exception:  # noqa: BLE001 - любой сбой расшифровки означает «закрыт паролем»
+            unlocked = False
+        if not unlocked:
+            raise ExtractFailure("encrypted")
+    return reader
+
+
+def _pdf(reader: "PdfReader", deadline: Deadline) -> Iterator[str]:
+    try:
         for index, page in enumerate(reader.pages):
             if index >= _MAX_PDF_PAGES:
                 return

@@ -34,8 +34,9 @@ def _zip(files: dict[str, str | bytes]) -> bytes:
     return buffer.getvalue()
 
 
-def make_pdf(text: str) -> bytes:
-    stream = f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
+def make_pdf(text: str, hex_string: bool = False) -> bytes:
+    shown = f"<{text.encode('latin-1').hex()}>" if hex_string else f"({text})"
+    stream = f"BT /F1 12 Tf 72 720 Td {shown} Tj ET".encode("latin-1")
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -255,3 +256,99 @@ def test_unexpected_parser_failure_is_an_error(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("barysguard.services.inspection.engine.extract", boom)
 
     assert _scan("a.txt", b"hello").status == "error"
+
+
+# --- Формат по содержимому, а не по имени ---------------------------------------
+
+
+def _docx_with_secrets() -> bytes:
+    document = (
+        f'<?xml version="1.0"?><w:document xmlns:w="{W}"><w:body>'
+        f"<w:p><w:r><w:t>ИИН {IIN}</w:t></w:r></w:p>"
+        f"<w:p><w:r><w:t>карта {CARD}</w:t></w:r></w:p>"
+        f"</w:body></w:document>"
+    )
+    return _zip({"[Content_Types].xml": "<Types/>", "word/document.xml": document})
+
+
+@pytest.mark.parametrize("name", ["a.txt", "a.docx", "a.bin", "C:\\x\\a", "a.pdf"])
+def test_same_docx_bytes_give_the_same_scan_under_any_name(name: str) -> None:
+    reference = _scan("a.docx", _docx_with_secrets())
+
+    outcome = _scan(name, _docx_with_secrets())
+
+    assert reference.status == "ok"
+    assert reference.findings["iin_bin"]["count"] == 1
+    assert reference.findings["card"]["count"] == 1
+    assert outcome == reference
+
+
+def test_xlsx_and_pptx_are_recognised_by_members_not_by_name() -> None:
+    sheet = (
+        f'<?xml version="1.0"?><worksheet xmlns="{S}"><sheetData><row>'
+        f'<c r="A1"><v>{IIN}</v></c></row></sheetData></worksheet>'
+    )
+    slide = (
+        f'<?xml version="1.0"?><p:sld xmlns:p="urn:p" xmlns:a="{A}"><a:p><a:r>'
+        f"<a:t>карта {CARD}</a:t></a:r></a:p></p:sld>"
+    )
+
+    xlsx = _scan("table.csv", _zip({"xl/worksheets/sheet1.xml": sheet}))
+    pptx = _scan("deck.txt", _zip({"ppt/slides/slide1.xml": slide}))
+
+    assert xlsx.status == "ok" and xlsx.findings["iin_bin"]["count"] == 1
+    assert pptx.status == "ok" and pptx.findings["card"]["count"] == 1
+
+
+def test_pdf_renamed_to_txt_is_parsed_as_pdf() -> None:
+    # Текст страницы записан шестнадцатеричной строкой: прочитанный как текст, файл ничего не даст.
+    data = make_pdf(f"IIN {IIN}", hex_string=True)
+
+    as_pdf = _scan("a.pdf", data)
+    as_txt = _scan("a.txt", data)
+
+    assert as_pdf.status == "ok" and as_pdf.findings["iin_bin"]["count"] == 1
+    assert as_txt == as_pdf
+
+
+def test_binary_content_under_a_text_extension_is_unsupported() -> None:
+    blob = bytes(range(256)) * 4 + f" {IIN} ".encode()
+
+    assert _scan("a.txt", blob).status == "unsupported"
+    assert _scan("a.csv", b"\x00\x00\x00\x00").status == "unsupported"
+
+
+def test_other_zip_archives_are_unsupported_whatever_the_name() -> None:
+    archive = _zip({"notes.txt": f"ИИН {IIN}"})
+
+    assert _scan("a.zip", archive).status == "unsupported"
+    assert _scan("a.txt", archive).status == "unsupported"
+
+
+def test_ole_file_is_encrypted_only_under_an_office_name() -> None:
+    ole = bytes.fromhex("D0CF11E0A1B11AE1") + b"\x00" * 64
+
+    assert _scan("secret.xlsx", ole).status == "encrypted"
+    assert _scan("old.doc", ole).status == "unsupported"
+    assert _scan("a.txt", ole).status == "unsupported"
+
+
+def test_utf16_text_with_a_bom_is_text() -> None:
+    for bom, codec in ((b"\xff\xfe", "utf-16-le"), (b"\xfe\xff", "utf-16-be")):
+        outcome = _scan("a.txt", bom + f"ИИН {IIN}".encode(codec))
+
+        assert outcome.status == "ok" and outcome.findings["iin_bin"]["count"] == 1
+
+
+def test_text_that_only_looks_like_a_container_is_still_scanned_as_text() -> None:
+    # Подпись в начале не прячет текстовый файл: как PDF/zip он не разбирается — читаем текст.
+    for prefix in (b"%PDF-1.4\n", b"PK\x03\x04\n"):
+        outcome = _scan("a.txt", prefix + f"ИИН {IIN}".encode())
+
+        assert outcome.status == "ok" and outcome.findings["iin_bin"]["count"] == 1
+
+
+def test_a_container_name_with_text_content_is_an_error() -> None:
+    assert _scan("a.docx", f"ИИН {IIN}".encode()).status == "error"
+    assert _scan("a.pdf", f"ИИН {IIN}".encode()).status == "error"
+    assert _scan("a.docx", b"").status == "error"
