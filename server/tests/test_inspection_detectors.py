@@ -109,6 +109,37 @@ def test_card_rejects_bad_luhn_unknown_prefix_and_long_runs() -> None:
     assert _scan(text, CardDetector())["card"].count == 0
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2024-01-15 4111111111111111",
+        "Сумма 15000 4111 1111 1111 1111",
+        "880101300124 4111 1111 1111 1111",
+        "2024 01 15 4111 1111 1111 1111",
+    ],
+)
+def test_card_right_after_another_number_is_found(text: str) -> None:
+    found = _scan(text, CardDetector())
+
+    assert found["card"].count == 1
+    assert found["card"].samples == ["************1111"]
+
+
+def test_card_followed_by_an_iin_gives_one_of_each() -> None:
+    found = _scan(f"{VISA} {IIN_FIRST_PASS}", IinBinDetector(), CardDetector())
+
+    assert found["card"].count == 1 and found["card"].samples == ["************1111"]
+    assert found["iin_bin"].count == 1 and found["iin_bin"].samples == ["**********17"]
+
+
+def test_card_found_after_a_number_is_counted_once() -> None:
+    # Подходящий номер не должен засчитываться повторно хвостом при следующем поиске.
+    found = _scan(f"15 {VISA} 2024-01-15 {MASTERCARD}", CardDetector())
+
+    assert found["card"].count == 2
+    assert found["card"].samples == ["************1111", "************4444"]
+
+
 def test_dictionary_ignores_case_yo_and_word_boundaries() -> None:
     detector = DictionaryDetector("markings", ["Конфиденциально", "для служебного пользования"])
     text = "КОНФИДЕНЦИАЛЬНО. Для   служебного\nпользования. неконфиденциально"
@@ -149,6 +180,10 @@ def _document() -> str:
         + f" БИН {BIN_VALID}; ещё карта {MIR}; ИИН {IIN_ZERO}. "
         + "1" * 40
         + " конфиденциально"
+        # Карты сразу после другого числа (дата, сумма, ИИН из таблицы PDF) и ИИН сразу после карты.
+        + " 2024-01-15 4111111111111111; Сумма 15000 4111 1111 1111 1111;"
+        + " 880101300124 4111 1111 1111 1111; "
+        + f"{MASTERCARD} {IIN_SECOND_PASS}; 2024 01 15 {MIR}"
     )
 
 
@@ -170,6 +205,6 @@ def test_chunking_does_not_change_the_result(size: int) -> None:
     assert {key: (f.count, f.samples) for key, f in chunked.items()} == {
         key: (f.count, f.samples) for key, f in whole.items()
     }
-    assert whole["iin_bin"].count == 3
-    assert whole["card"].count == 2
+    assert whole["iin_bin"].count == 4
+    assert whole["card"].count == 7
     assert whole["markings"].count == 2
