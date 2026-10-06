@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -133,6 +134,12 @@ func (w *Worker) Pass(ctx context.Context) {
 		return
 	}
 	w.prune(entries)
+	// Копии, которые уже падали, идут после остальных: файл, всегда
+	// получающий временную ошибку, иначе держал бы очередь и ставил бы паузу
+	// раньше, чем новые файлы дождутся своей очереди.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return w.retry[entries[i].SHA256] == nil && w.retry[entries[j].SHA256] != nil
+	})
 	for _, entry := range entries {
 		if ctx.Err() != nil {
 			return

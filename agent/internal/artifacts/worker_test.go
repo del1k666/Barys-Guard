@@ -576,3 +576,39 @@ func TestRunKeepsAGapBetweenPasses(t *testing.T) {
 		t.Fatalf("паузы %v, ожидалась одна в %v перед новым проходом", h.slept, minPassGap)
 	}
 }
+
+// perSizeFailing отказывает во временной ошибке только файлу заданного размера.
+type perSizeFailing struct {
+	*fakeServer
+	poisonSize int64
+}
+
+func (p *perSizeFailing) OpenArtifact(ctx context.Context, sha string, size int64) (transport.ArtifactOpenResponse, error) {
+	if size == p.poisonSize {
+		p.opens++
+		return transport.ArtifactOpenResponse{}, &transport.StatusError{Code: 503}
+	}
+	return p.fakeServer.OpenArtifact(ctx, sha, size)
+}
+
+// Старый файл, на который сервер всегда отвечает 503, не должен
+// мешать загрузке новых файлов.
+func TestAlwaysFailingFileDoesNotBlockNewerFiles(t *testing.T) {
+	h := newWorkerHarness(t)
+	h.worker.api = &perSizeFailing{fakeServer: h.api, poisonSize: 100}
+	stage(t, h.store, randomBytes(100))
+
+	h.worker.Pass(context.Background())
+	h.clock.now = h.clock.now.Add(time.Second)
+	stage(t, h.store, randomBytes(200))
+	h.clock.now = h.clock.now.Add(backoffMax + time.Second)
+
+	h.worker.Pass(context.Background())
+
+	if h.pending(t) != 1 {
+		t.Fatalf("осталось копий %d, ожидалась одна (отравленная)", h.pending(t))
+	}
+	if len(h.api.received) != 200 {
+		t.Fatal("новый файл не загружен")
+	}
+}
