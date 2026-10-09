@@ -3622,34 +3622,22 @@ components:
     RuleUpdateRequest:
       properties:
         title:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
           title: Title
         enabled:
-          anyOf:
-          - type: boolean
-          - type: 'null'
+          type: boolean
           title: Enabled
         weight:
-          anyOf:
-          - type: integer
-          - type: 'null'
+          type: integer
           title: Weight
         cap:
-          anyOf:
-          - type: integer
-          - type: 'null'
+          type: integer
           title: Cap
         pattern:
-          anyOf:
-          - type: string
-          - type: 'null'
+          type: string
           title: Pattern
         ignore_case:
-          anyOf:
-          - type: boolean
-          - type: 'null'
+          type: boolean
           title: Ignore Case
         test_text:
           anyOf:
@@ -3658,6 +3646,8 @@ components:
           title: Test Text
       type: object
       title: RuleUpdateRequest
+      description: 'Частичное изменение: поле не передано - не меняется; явный null
+        запрещён.'
     RuleVersionItem:
       properties:
         version:

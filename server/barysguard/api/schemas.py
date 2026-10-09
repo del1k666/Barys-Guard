@@ -392,12 +392,14 @@ class RuleCreateRequest(BaseModel):
 
 
 class RuleUpdateRequest(BaseModel):
-    title: str | None = None
-    enabled: bool | None = None
-    weight: int | None = None
-    cap: int | None = None
-    pattern: str | None = None
-    ignore_case: bool | None = None
+    """Частичное изменение: поле не передано - не меняется; явный null запрещён."""
+
+    title: str = Field(default=None)  # type: ignore[assignment]
+    enabled: bool = Field(default=None)  # type: ignore[assignment]
+    weight: int = Field(default=None)  # type: ignore[assignment]
+    cap: int = Field(default=None)  # type: ignore[assignment]
+    pattern: str = Field(default=None)  # type: ignore[assignment]
+    ignore_case: bool = Field(default=None)  # type: ignore[assignment]
     test_text: str | None = None
 
 

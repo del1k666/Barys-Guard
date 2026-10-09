@@ -334,3 +334,14 @@ async def test_listing_survives_a_corrupt_pattern(app_client, session) -> None:
     await session.flush()
 
     assert view.id in {v.id for v in await list_rules(session)}
+
+
+@pytest.mark.parametrize("name", ["title", "enabled", "weight", "cap", "pattern", "ignore_case"])
+async def test_update_rejects_explicit_none(session, name) -> None:
+    await _seeded(session)
+    rule = next(r for r in await list_rules(session) if r.key == "card")
+
+    with pytest.raises(RuleError) as caught:
+        await update_rule(session, SETTINGS, rule.id, {name: None})
+
+    assert caught.value.status_code == 422

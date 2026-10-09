@@ -2,6 +2,7 @@
 
 import uuid
 
+import pytest
 from sqlalchemy import select
 
 from barysguard.db.models.audit import AuditLog
@@ -253,3 +254,17 @@ async def test_test_text_never_reaches_error_bodies(app_client, session) -> None
 
     assert "Договор" not in bad.text and "1234" not in bad.text
     assert "Договор" not in rejected.text and "1234" not in rejected.text
+
+
+@pytest.mark.parametrize("name", ["title", "enabled", "weight", "cap", "pattern", "ignore_case"])
+async def test_patch_with_explicit_null_is_422_and_changes_nothing(
+    app_client, session, name
+) -> None:
+    await _admin(app_client, session, f"rules-null-{name}")
+    card = await _by_key(app_client, "card")
+
+    response = await app_client.patch(f"/api/v1/rules/{card['id']}", json={name: None})
+    after = await app_client.get(f"/api/v1/rules/{card['id']}")
+
+    assert response.status_code == 422
+    assert after.json() == card

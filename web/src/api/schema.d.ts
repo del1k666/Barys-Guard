@@ -2035,20 +2035,23 @@ export interface components {
             /** Matches */
             matches: components["schemas"]["RuleMatchSpan"][];
         };
-        /** RuleUpdateRequest */
+        /**
+         * RuleUpdateRequest
+         * @description Частичное изменение: поле не передано - не меняется; явный null запрещён.
+         */
         RuleUpdateRequest: {
             /** Title */
-            title?: string | null;
+            title?: string;
             /** Enabled */
-            enabled?: boolean | null;
+            enabled?: boolean;
             /** Weight */
-            weight?: number | null;
+            weight?: number;
             /** Cap */
-            cap?: number | null;
+            cap?: number;
             /** Pattern */
-            pattern?: string | null;
+            pattern?: string;
             /** Ignore Case */
-            ignore_case?: boolean | null;
+            ignore_case?: boolean;
             /** Test Text */
             test_text?: string | null;
         };

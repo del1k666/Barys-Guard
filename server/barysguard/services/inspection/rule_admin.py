@@ -324,9 +324,15 @@ async def create_rule(
     return await get_rule(session, rule.id)
 
 
+_NOT_NULLABLE = ("title", "enabled", "weight", "cap", "pattern", "ignore_case")
+
+
 async def update_rule(
     session: AsyncSession, settings: Settings, rule_id: uuid.UUID, fields: dict[str, Any]
 ) -> tuple[RuleView, dict[str, Any]]:
+    for name in _NOT_NULLABLE:
+        if name in fields and fields[name] is None:
+            raise RuleError(422, f"Поле «{name}» нельзя сбросить в пустое значение")
     rule = await _rule(session, rule_id, lock=True)
     latest = await _latest(session, rule.id)
     params = dict(latest.params)
