@@ -127,6 +127,32 @@ describe("RuleDialog: правка", () => {
     expect(dialog.querySelector("mark")).toBeNull();
   });
 
+  it("запоздавший ответ проверки не засчитывается для изменённого шаблона", async () => {
+    let release: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    setup({ "POST /rules/test": () => pending as never });
+    renderPage(<RulesPage />, route);
+
+    const dialog = await openEdit("Номер договора");
+    const pattern = within(dialog).getByLabelText("Шаблон");
+    await userEvent.type(pattern, "x");
+    await userEvent.type(within(dialog).getByLabelText("Тестовый текст"), "ab N-1234 c");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Проверить" }));
+
+    // Шаблон меняется, пока проверка ещё идёт.
+    await userEvent.type(pattern, "y");
+    release(MATCH_OK);
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Проверить" })).toBeEnabled(),
+    );
+    expect(within(dialog).getByRole("button", { name: "Сохранить" })).toBeDisabled();
+    expect(dialog.querySelector("mark")).toBeNull();
+    expect(within(dialog).queryByText("Совпадений: 1")).not.toBeInTheDocument();
+  });
+
   it("ошибка шаблона от проверки показывается и оставляет сохранение недоступным", async () => {
     setup({
       "POST /rules/test": json(200, {

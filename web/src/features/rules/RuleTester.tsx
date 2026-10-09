@@ -35,6 +35,12 @@ export function RuleTester({ kind, pattern, ignoreCase, terms, onResult }: Props
   } | null>(null);
   const signature = JSON.stringify([kind, pattern, ignoreCase, terms]);
   const checked = useRef<string | null>(null);
+  // Актуальная подпись: ответ на устаревший запрос отбрасывается.
+  const latest = useRef(signature);
+
+  useEffect(() => {
+    latest.current = signature;
+  }, [signature]);
 
   // Изменённый шаблон делает прежнюю проверку недействительной.
   useEffect(() => {
@@ -46,6 +52,7 @@ export function RuleTester({ kind, pattern, ignoreCase, terms, onResult }: Props
   }, [signature, onResult]);
 
   async function run() {
+    const requested = signature;
     try {
       const result = await test.mutateAsync({
         kind,
@@ -54,10 +61,12 @@ export function RuleTester({ kind, pattern, ignoreCase, terms, onResult }: Props
         terms,
         text,
       });
-      checked.current = signature;
+      if (latest.current !== requested) return;
+      checked.current = requested;
       setShown({ spans: result.matches, count: result.count, error: result.error ?? null, text });
       onResult({ ok: result.ok, count: result.count, text });
     } catch (failure) {
+      if (latest.current !== requested) return;
       checked.current = null;
       setShown({ spans: [], count: 0, error: describeError(failure), text });
       onResult(null);
