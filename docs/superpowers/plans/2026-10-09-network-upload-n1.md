@@ -992,8 +992,8 @@ func TestReadsKeepRecentAndRefreshDuplicates(t *testing.T) {
 	if got := reads.Recent(7, now.Add(50*time.Second)); len(got) != 2 {
 		t.Fatalf("повтор пути обновляет запись, а не плодит: %v", got)
 	}
-	// a.pdf обновлялся на 30-й секунде, b.pdf — на 40-й; на 95-й обе в окне, на 105-й — только b.pdf.
-	if got := reads.Recent(7, now.Add(105*time.Second)); len(got) != 1 || got[0].Path != `C:\b.pdf` {
+	// a.pdf обновлялся на 30-й секунде, b.pdf — на 40-й; на 95-й a.pdf (65 с) вышел из окна, b.pdf (55 с) остался.
+	if got := reads.Recent(7, now.Add(95*time.Second)); len(got) != 1 || got[0].Path != `C:\b.pdf` {
 		t.Fatalf("устаревшее не отдаётся: %v", got)
 	}
 	if got := reads.Recent(8, now); len(got) != 0 {
