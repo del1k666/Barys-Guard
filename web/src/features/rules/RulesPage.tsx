@@ -10,7 +10,9 @@ import { useToast } from "../../components/Toast";
 import { ru } from "../../i18n/ru";
 import { describeError } from "../../lib/errors";
 import page from "../../styles/page.module.css";
+import { CreateRuleDialog } from "./CreateRuleDialog";
 import { GuideTab } from "./GuideTab";
+import { RuleDialog } from "./RuleDialog";
 import { useRules, useUpdateRule } from "./queries";
 import styles from "./rules.module.css";
 
@@ -19,8 +21,10 @@ type Tab = "list" | "guide";
 export function RulesPage() {
   const { user } = useSession();
   const [tab, setTab] = useState<Tab>("list");
+  const [editing, setEditing] = useState<RuleSummary | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  if (user && user.role !== "admin") {
+  if (!user || user.role !== "admin") {
     return <p className={styles.note}>{ru.rules.adminOnly}</p>;
   }
 
@@ -28,8 +32,7 @@ export function RulesPage() {
     <>
       <div className={page.titleRow}>
         <h1 className={page.title}>{ru.rules.title}</h1>
-        {/* Окно создания подключается в следующей задаче. */}
-        <Button variant="primary" disabled>
+        <Button variant="primary" onClick={() => setCreating(true)}>
           {ru.rules.create}
         </Button>
       </div>
@@ -52,13 +55,16 @@ export function RulesPage() {
       </div>
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "list" ? <RulesList /> : <GuideTab />}
+        {tab === "list" ? <RulesList onEdit={setEditing} /> : <GuideTab />}
       </div>
+
+      <RuleDialog rule={editing} onClose={() => setEditing(null)} />
+      <CreateRuleDialog open={creating} onClose={() => setCreating(false)} />
     </>
   );
 }
 
-function RulesList() {
+function RulesList({ onEdit }: { onEdit: (rule: RuleSummary) => void }) {
   const rules = useRules();
 
   if (rules.isPending) return <Spinner label={ru.common.loading} />;
@@ -84,14 +90,14 @@ function RulesList() {
       </thead>
       <tbody>
         {rules.data.map((rule) => (
-          <RuleRow key={rule.id} rule={rule} />
+          <RuleRow key={rule.id} rule={rule} onEdit={onEdit} />
         ))}
       </tbody>
     </Table>
   );
 }
 
-function RuleRow({ rule }: { rule: RuleSummary }) {
+function RuleRow({ rule, onEdit }: { rule: RuleSummary; onEdit: (rule: RuleSummary) => void }) {
   const update = useUpdateRule(rule.id);
   const toast = useToast();
   // Показываем выбранное состояние сразу; при ошибке возвращаем серверное.
@@ -126,8 +132,7 @@ function RuleRow({ rule }: { rule: RuleSummary }) {
       <td>{rule.cap}</td>
       <td>{rule.version}</td>
       <td>
-        {/* Окно изменения подключается в следующей задаче. */}
-        <Button disabled>{ru.rules.edit}</Button>
+        <Button onClick={() => onEdit(rule)}>{ru.rules.edit}</Button>
       </td>
     </tr>
   );
