@@ -30,6 +30,9 @@ type Reads struct {
 }
 
 func NewReads(retention time.Duration, maxPIDs, maxPerPID int) *Reads {
+	if maxPerPID < 1 {
+		maxPerPID = 1
+	}
 	return &Reads{retention: retention, maxPIDs: maxPIDs, maxPerPID: maxPerPID, byPID: map[uint32]*pidReads{}}
 }
 
@@ -79,8 +82,9 @@ func (r *Reads) evictOldestLocked() {
 	}
 }
 
-// Recent отдаёт чтения процесса, случившиеся не раньше since.
-func (r *Reads) Recent(pid uint32, since time.Time) []Read {
+// Recent отдаёт чтения процесса, случившиеся не раньше since и не старше
+// хранения относительно now.
+func (r *Reads) Recent(pid uint32, since, now time.Time) []Read {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry := r.byPID[pid]
@@ -88,8 +92,9 @@ func (r *Reads) Recent(pid uint32, since time.Time) []Read {
 		return nil
 	}
 	var out []Read
+	oldest := now.Add(-r.retention)
 	for _, read := range entry.items {
-		if !read.At.Before(since) {
+		if !read.At.Before(since) && !read.At.Before(oldest) {
 			out = append(out, read)
 		}
 	}

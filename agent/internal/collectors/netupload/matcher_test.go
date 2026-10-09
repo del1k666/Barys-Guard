@@ -179,3 +179,77 @@ func TestReadOlderThanWindowBeforeFirstSendDoesNotMatch(t *testing.T) {
 		t.Fatalf("чтение раньше окна до начала передачи: %v", got)
 	}
 }
+
+func TestChattyClientDoesNotMatchLocallyOpenedDocument(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	telegram := "149.154.167.50"
+
+	total := 0
+	for i := 0; i < 40; i++ { // 20 минут keepalive по 1 КБ
+		total += len(m.Observe(send(5, telegram, 1_000, t0.Add(time.Duration(i)*30*time.Second))))
+	}
+	readAt := t0.Add(20*time.Minute + 10*time.Second)
+	reads.Add(5, Read{Path: `C:\doc.pdf`, Size: 30_000, At: readAt})
+	for i := 1; i <= 20; i++ { // ещё 10 минут keepalive
+		total += len(m.Observe(send(5, telegram, 1_000, readAt.Add(time.Duration(i)*30*time.Second-10*time.Second))))
+	}
+	if total != 0 {
+		t.Fatalf("keepalive до чтения засчитан как отправка файла: %d", total)
+	}
+}
+
+func TestStaleReadIsNotMatchedAfterMaxTransfer(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	reads.Add(5, Read{Path: `C:\stale.pdf`, Size: 20_000, At: t0})
+
+	// Совпадение раньше предела maxTransfer допустимо (объём keepalive с лихвой
+	// превышает размер файла). Детерминированно проверяем другое: после
+	// maxTransfer чтение кандидатом быть не может, и событий не больше одного.
+	total := 0
+	for i := 1; i <= 60; i++ { // 30 минут по 5 КБ
+		at := t0.Add(time.Duration(i) * 30 * time.Second)
+		found := m.Observe(send(5, "149.154.167.50", 5_000, at))
+		if len(found) > 0 && at.Sub(t0) > maxTransfer {
+			t.Fatalf("совпадение позже maxTransfer: %v", at.Sub(t0))
+		}
+		total += len(found)
+	}
+	if total > 1 {
+		t.Fatalf("событий %d, ждали не больше 1", total)
+	}
+}
+
+func TestReadOlderThanMaxTransferNeverMatches(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	reads.Add(5, Read{Path: `C:\stale.pdf`, Size: 1_000, At: t0})
+	if got := m.Observe(send(5, "149.154.167.50", 50_000, t0.Add(maxTransfer+time.Second))); len(got) != 0 {
+		t.Fatalf("чтение старше maxTransfer: %v", got)
+	}
+}
+
+func TestReUploadWhileAccumulatorIsAlive(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	file := Read{Path: `C:\f.pdf`, Size: 10_000, At: t0}
+	reads.Add(5, file)
+	if got := m.Observe(send(5, "162.125.1.14", 10_000, t0)); len(got) != 1 {
+		t.Fatalf("первая загрузка: %v", got)
+	}
+	m.Observe(send(5, "162.125.1.14", 100, t0.Add(30*time.Second)))
+	m.Observe(send(5, "162.125.1.14", 100, t0.Add(60*time.Second)))
+
+	file.At = t0.Add(70 * time.Second)
+	reads.Add(5, file)
+	if got := m.Observe(send(5, "162.125.1.14", 10_000, t0.Add(71*time.Second))); len(got) != 1 {
+		t.Fatalf("повторная загрузка при живом накопителе: %v", got)
+	}
+}
+
+func TestNonPositiveSizeIsIgnored(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	reads.Add(5, Read{Path: `C:\neg.pdf`, Size: -5, At: t0})
+	reads.Add(5, Read{Path: `C:\zero.pdf`, Size: 0, At: t0})
+
+	if got := m.Observe(send(5, "162.125.1.14", 5_000, t0)); len(got) != 0 {
+		t.Fatalf("%v", got)
+	}
+}
