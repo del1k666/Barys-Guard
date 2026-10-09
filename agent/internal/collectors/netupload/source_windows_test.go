@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"net/netip"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 )
@@ -166,64 +166,157 @@ func TestListenerRoutesByProvider(t *testing.T) {
 	}
 }
 
-// fakeHub — приёмник без ETW; start считает вызовы и может падать.
-func fakeHub(fail *atomic.Bool, calls *atomic.Int32) *hub {
-	return newHub(func(func(rawEvent)) error {
-		calls.Add(1)
-		if fail.Load() {
-			return errors.New("нет прав")
-		}
-		return nil
+// fakeETW — подмена операций ETW: журнал вызовов, управляемое время и сессии,
+// которые можно «убить снаружи».
+type fakeETW struct {
+	mu       sync.Mutex
+	calls    []string
+	failNext error
+	now      time.Time
+	sessions []*fakeSession
+}
+
+type fakeSession struct {
+	ended    chan struct{}
+	once     sync.Once
+	stopOnce sync.Once
+}
+
+func (s *fakeSession) end() { s.once.Do(func() { close(s.ended) }) }
+
+func (f *fakeETW) log(call string) {
+	f.mu.Lock()
+	f.calls = append(f.calls, call)
+	f.mu.Unlock()
+}
+
+func (f *fakeETW) callsCopy() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
+}
+
+func (f *fakeETW) advance(d time.Duration) {
+	f.mu.Lock()
+	f.now = f.now.Add(d)
+	f.mu.Unlock()
+}
+
+func (f *fakeETW) last() *fakeSession {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.sessions[len(f.sessions)-1]
+}
+
+func (f *fakeETW) hub() *hub {
+	return newHub(backend{
+		cooldown: 5 * time.Second,
+		now: func() time.Time {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			return f.now
+		},
+		stopStale: func() error { f.log("stopStale"); return nil },
+		launch: func(func(rawEvent)) (*session, error) {
+			f.log("launch")
+			f.mu.Lock()
+			err := f.failNext
+			f.failNext = nil
+			f.mu.Unlock()
+			if err != nil {
+				return nil, err
+			}
+			s := &fakeSession{ended: make(chan struct{})}
+			f.mu.Lock()
+			f.sessions = append(f.sessions, s)
+			f.mu.Unlock()
+			return &session{
+				wait: func() { <-s.ended },
+				stop: func() {
+					s.stopOnce.Do(func() { f.log("stop") }) // как в боевой реализации: однократно
+					s.end()
+				},
+			}, nil
+		},
 	})
 }
 
-func TestRunRetriesAfterFailedStart(t *testing.T) {
-	var fail atomic.Bool
-	var calls atomic.Int32
-	fail.Store(true)
-	h := fakeHub(&fail, &calls)
-	if err := runOnHub(context.Background(), h, func(Event) {}); err == nil {
-		t.Fatal("ожидалась ошибка запуска")
-	}
-	fail.Store(false)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := runOnHub(ctx, h, func(Event) {}); err != nil {
-		t.Fatalf("второй запуск: %v", err)
-	}
-	if calls.Load() != 2 {
-		t.Fatalf("запусков сессии %d, ожидалось 2", calls.Load())
-	}
-	// успешный старт происходит один раз, сколько бы раз ни вызывали Run
-	_ = runOnHub(ctx, h, func(Event) {})
-	_ = runOnHub(ctx, h, func(Event) {})
-	if calls.Load() != 2 {
-		t.Fatalf("сессия запущена повторно: %d", calls.Load())
-	}
-}
+func newFakeETW() *fakeETW { return &fakeETW{now: testAt} }
 
-func TestRunDeliversAndReturnsPromptlyOnCancel(t *testing.T) {
-	var fail atomic.Bool
-	var calls atomic.Int32
-	h := fakeHub(&fail, &calls)
-	events := make(chan Event, 4)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- runOnHub(ctx, h, func(e Event) { events <- e }) }()
-
+func waitListeners(t *testing.T, h *hub, want int) {
+	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		h.mu.RLock()
 		n := len(h.listeners)
 		h.mu.RUnlock()
-		if n == 1 {
-			break
+		if n == want {
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("подписчик не появился")
+			t.Fatalf("подписчиков %d, ожидалось %d", n, want)
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+func countCalls(calls []string, name string) int {
+	n := 0
+	for _, c := range calls {
+		if c == name {
+			n++
+		}
+	}
+	return n
+}
+
+func TestStaleStopHappensBeforeLaunch(t *testing.T) {
+	f := newFakeETW()
+	h := f.hub()
+	if _, err := h.ensure(); err != nil {
+		t.Fatal(err)
+	}
+	calls := f.callsCopy()
+	if len(calls) != 2 || calls[0] != "stopStale" || calls[1] != "launch" {
+		t.Fatalf("порядок вызовов: %v", calls)
+	}
+	// повторный ensure не трогает сессию
+	if _, err := h.ensure(); err != nil || len(f.callsCopy()) != 2 {
+		t.Fatalf("повторный ensure: %v %v", err, f.callsCopy())
+	}
+}
+
+func TestRunRetriesAfterFailedStart(t *testing.T) {
+	f := newFakeETW()
+	f.failNext = errors.New("нет прав")
+	h := f.hub()
+	if err := runOnHub(context.Background(), h, func(Event) {}); err == nil {
+		t.Fatal("ожидалась ошибка запуска")
+	}
+	// неудачный запуск не включает паузу: сразу можно пробовать снова
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runOnHub(ctx, h, func(Event) {}); err != nil {
+		t.Fatalf("второй запуск: %v", err)
+	}
+	if got := countCalls(f.callsCopy(), "launch"); got != 2 {
+		t.Fatalf("запусков %d, ожидалось 2", got)
+	}
+	_ = runOnHub(ctx, h, func(Event) {})
+	if got := countCalls(f.callsCopy(), "launch"); got != 2 {
+		t.Fatalf("сессия запущена повторно: %d", got)
+	}
+}
+
+func TestRunDeliversAndReturnsPromptlyOnCancel(t *testing.T) {
+	f := newFakeETW()
+	h := f.hub()
+	events := make(chan Event, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runOnHub(ctx, h, func(e Event) { events <- e }) }()
+	waitListeners(t, h, 1)
+
 	h.dispatch(rawEvent{prov: provNet, id: idUDPv4Send, pid: 3, at: testAt,
 		props: map[string]interface{}{propNetSize: "7", propNetDest: "8.8.8.8"}})
 	select {
@@ -244,16 +337,116 @@ func TestRunDeliversAndReturnsPromptlyOnCancel(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Run не вернулся после отмены")
 	}
-	h.mu.RLock()
-	n := len(h.listeners)
-	h.mu.RUnlock()
-	if n != 0 {
-		t.Fatalf("подписчик не снят: %d", n)
+	waitListeners(t, h, 0)
+	if countCalls(f.callsCopy(), "stop") != 0 {
+		t.Fatal("отмена Run не должна останавливать общую сессию")
+	}
+}
+
+func TestDeathReturnsErrorAndNextRunRestartsOnce(t *testing.T) {
+	f := newFakeETW()
+	h := f.hub()
+	done := make(chan error, 1)
+	go func() { done <- runOnHub(context.Background(), h, func(Event) {}) }()
+	waitListeners(t, h, 1)
+
+	f.last().end() // сессию остановили снаружи
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("гибель сессии должна давать ошибку")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run не вернулся после гибели сессии")
+	}
+
+	f.advance(6 * time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	done2 := make(chan error, 1)
+	go func() { done2 <- runOnHub(ctx, h, func(Event) {}) }()
+	waitListeners(t, h, 1)
+	if got := countCalls(f.callsCopy(), "launch"); got != 2 {
+		t.Fatalf("запусков %d, ожидалось ровно 2", got)
+	}
+	// ещё один Run использует уже запущенную сессию
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	done3 := make(chan error, 1)
+	go func() { done3 <- runOnHub(ctx2, h, func(Event) {}) }()
+	waitListeners(t, h, 2)
+	if got := countCalls(f.callsCopy(), "launch"); got != 2 {
+		t.Fatalf("лишний запуск: %d", got)
+	}
+	cancel()
+	cancel2()
+	<-done2
+	<-done3
+}
+
+func TestRestartCooldown(t *testing.T) {
+	f := newFakeETW()
+	h := f.hub()
+	if _, err := h.ensure(); err != nil {
+		t.Fatal(err)
+	}
+	f.last().end()
+	deadline := time.Now().Add(time.Second)
+	for {
+		h.startMu.Lock()
+		dead := h.current == nil
+		h.startMu.Unlock()
+		if dead {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("гибель не замечена")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	f.advance(2 * time.Second)
+	if _, err := h.ensure(); err == nil {
+		t.Fatal("перезапуск раньше паузы должен отказывать")
+	}
+	if got := countCalls(f.callsCopy(), "launch"); got != 1 {
+		t.Fatalf("запусков %d, ожидался 1", got)
+	}
+	f.advance(4 * time.Second)
+	if _, err := h.ensure(); err != nil {
+		t.Fatalf("после паузы перезапуск должен пройти: %v", err)
+	}
+	if got := countCalls(f.callsCopy(), "launch"); got != 2 {
+		t.Fatalf("запусков %d, ожидалось 2", got)
+	}
+}
+
+func TestShutdownIsIdempotentAndNotADeath(t *testing.T) {
+	f := newFakeETW()
+	h := f.hub()
+	h.shutdown() // до запуска: ничего не делает
+	if len(f.callsCopy()) != 0 {
+		t.Fatalf("shutdown без сессии вызвал ETW: %v", f.callsCopy())
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- runOnHub(context.Background(), h, func(Event) {}) }()
+	waitListeners(t, h, 1)
+
+	h.shutdown()
+	h.shutdown()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("намеренная остановка не должна давать ошибку: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run не вернулся после shutdown")
+	}
+	if got := countCalls(f.callsCopy(), "stop"); got != 1 {
+		t.Fatalf("stop вызван %d раз, ожидался 1", got)
 	}
 }
 
 func TestDispatchSurvivesPanickingListener(t *testing.T) {
-	h := newHub(func(func(rawEvent)) error { return nil })
+	h := newHub(backend{})
 	var delivered int
 	h.subscribe(func(rawEvent) { panic("битое событие") })
 	h.subscribe(func(rawEvent) { delivered++ })

@@ -4,8 +4,11 @@ package netupload
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/0xrawsec/golang-etw/etw"
@@ -93,37 +96,116 @@ func collectProps(get func(string) (string, error), names []string) map[string]i
 	return props
 }
 
-// hub — общий для процесса приёмник ETW. Сессия и потребитель запускаются один
-// раз: каждый запуск потребителя навсегда занимает слоты обратных вызовов
-// syscall (их около 1024 на процесс), поэтому перезапуск группы сборщиков
-// не должен создавать новые. Каждый Source.Run лишь подписывается на события.
+// session — запущенная сессия ETW с потребителем. wait блокируется, пока трасса
+// не завершится (по stop или снаружи, например командой logman stop -ets); stop
+// останавливает потребитель и сессию и безопасен при повторном вызове.
+type session struct {
+	wait func()
+	stop func()
+}
+
+// backend — операции с ETW; в тестах подменяется.
+type backend struct {
+	// stopStale останавливает сессию с нашим именем, оставшуюся от прошлого
+	// запуска (сессия ETW — объект ядра и переживает процесс).
+	stopStale func() error
+	launch    func(dispatch func(rawEvent)) (*session, error)
+	now       func() time.Time
+	// cooldown — минимальный интервал между успешными запусками сессии.
+	cooldown time.Duration
+}
+
+// generation — одна запущенная сессия. dead закрывается, когда трасса
+// завершилась; err и intentional выставляются до закрытия dead.
+type generation struct {
+	sess        *session
+	dead        chan struct{}
+	err         error
+	intentional bool
+}
+
+// hub — общий для процесса приёмник ETW. Каждый запуск потребителя навсегда
+// занимает слоты обратных вызовов syscall (их около 1024 на процесс), поэтому
+// перезапуск группы сборщиков не должен создавать новые: сессия запускается
+// лениво один раз, а каждый Source.Run лишь подписывается на события. Новая
+// сессия создаётся только после гибели прежней и не чаще backend.cooldown.
 type hub struct {
-	startMu sync.Mutex
-	started bool
-	start   func(dispatch func(rawEvent)) error
+	be backend
+
+	startMu   sync.Mutex
+	current   *generation
+	lastStart time.Time
 
 	mu        sync.RWMutex
 	next      int
 	listeners map[int]func(rawEvent)
 }
 
-func newHub(start func(dispatch func(rawEvent)) error) *hub {
-	return &hub{start: start, listeners: map[int]func(rawEvent){}}
+func newHub(be backend) *hub {
+	if be.now == nil {
+		be.now = time.Now
+	}
+	return &hub{be: be, listeners: map[int]func(rawEvent){}}
 }
 
-// ensure запускает сессию, если она ещё не запущена. После неудачи следующий
-// вызов пробует снова.
-func (h *hub) ensure() error {
+// ensure возвращает работающую сессию, запуская её при необходимости. После
+// неудачи или гибели следующий вызов пробует снова.
+func (h *hub) ensure() (*generation, error) {
 	h.startMu.Lock()
 	defer h.startMu.Unlock()
-	if h.started {
-		return nil
+	if h.current != nil {
+		return h.current, nil
 	}
-	if err := h.start(h.dispatch); err != nil {
-		return err
+	if !h.lastStart.IsZero() && h.be.now().Sub(h.lastStart) < h.be.cooldown {
+		return nil, errors.New("перезапуск сессии ETW слишком частый, повтор позже")
 	}
-	h.started = true
-	return nil
+	// Сессия ETW живёт в ядре дольше процесса: остаток прошлого запуска
+	// останавливаем сами, чтобы не срабатывала ветка библиотеки с ошибкой.
+	if err := h.be.stopStale(); err != nil {
+		slog.Warn("не удалось остановить старую сессию ETW", "error", err)
+	}
+	sess, err := h.be.launch(h.dispatch)
+	if err != nil {
+		return nil, err
+	}
+	h.lastStart = h.be.now()
+	gen := &generation{sess: sess, dead: make(chan struct{})}
+	h.current = gen
+	go func() {
+		sess.wait()
+		h.markDead(gen)
+	}()
+	return gen, nil
+}
+
+// markDead отмечает конец трассы. Если он не намеренный, следующий ensure
+// запустит сессию заново, а ожидающие Run получат ошибку.
+func (h *hub) markDead(gen *generation) {
+	h.startMu.Lock()
+	if !gen.intentional {
+		gen.err = errors.New("сессия ETW остановлена")
+	}
+	if h.current == gen {
+		h.current = nil
+	}
+	h.startMu.Unlock()
+	gen.sess.stop() // освобождает дескрипторы; повторный вызов безопасен
+	close(gen.dead)
+}
+
+// shutdown намеренно останавливает сессию. Ожидающие Run вернутся без ошибки.
+func (h *hub) shutdown() {
+	h.startMu.Lock()
+	gen := h.current
+	if gen != nil {
+		gen.intentional = true
+		h.current = nil
+	}
+	h.startMu.Unlock()
+	if gen != nil {
+		gen.sess.stop()
+		<-gen.dead
+	}
 }
 
 func (h *hub) subscribe(listener func(rawEvent)) (unsubscribe func()) {
@@ -157,14 +239,36 @@ func (h *hub) dispatch(event rawEvent) {
 }
 
 // shared — единственный приёмник процесса.
-var shared = newHub(startETW)
+var shared = newHub(backend{
+	stopStale: stopStaleSession,
+	launch:    launchETW,
+	cooldown:  5 * time.Second,
+})
 
-// startETW создаёт сессию с тремя провайдерами и запускает потребитель. Сессия
-// остаётся работать до конца процесса, потребитель никогда не останавливается.
-// Устаревшую сессию с тем же именем (после аварийного завершения) библиотека
-// останавливает и создаёт заново сама.
-func startETW(dispatch func(rawEvent)) error {
-	session := etw.NewRealTimeSession(sessionName)
+// Shutdown останавливает общую сессию ETW (для штатного завершения агента).
+// Идемпотентна и безопасна, если сессия не запускалась. После аварийного
+// завершения процесса остаток сессии останавливается при следующем запуске.
+func Shutdown() { shared.shutdown() }
+
+// stopStaleSession останавливает сессию с именем sessionName, если она есть.
+// Буфер свойств полноразмерный (структура и имя): библиотечная ветка
+// ERROR_ALREADY_EXISTS копирует только структуру и портит память.
+func stopStaleSession() error {
+	name, err := syscall.UTF16PtrFromString(sessionName)
+	if err != nil {
+		return err
+	}
+	props := etw.NewRealTimeEventTraceSessionProperties(sessionName)
+	err = etw.ControlTrace(0, name, props, etw.EVENT_TRACE_CONTROL_STOP)
+	if err == nil || errors.Is(err, etw.ERROR_WMI_INSTANCE_NOT_FOUND) {
+		return nil
+	}
+	return err
+}
+
+// launchETW создаёт сессию с тремя провайдерами и запускает потребитель.
+func launchETW(dispatch func(rawEvent)) (*session, error) {
+	rt := etw.NewRealTimeSession(sessionName)
 	providers := []etw.Provider{
 		{GUID: guidKernelFile, Name: "Microsoft-Windows-Kernel-File", EnableLevel: 0xFF,
 			MatchAnyKeyword: keywordsKernelFile,
@@ -175,13 +279,13 @@ func startETW(dispatch func(rawEvent)) error {
 			Filter: []uint16{idDNSQueryDone}},
 	}
 	for _, provider := range providers {
-		if err := session.EnableProvider(provider); err != nil {
-			_ = session.Stop()
-			return fmt.Errorf("сессия ETW, провайдер %s: %w", provider.Name, err)
+		if err := rt.EnableProvider(provider); err != nil {
+			_ = rt.Stop()
+			return nil, fmt.Errorf("сессия ETW, провайдер %s: %w", provider.Name, err)
 		}
 	}
 
-	consumer := etw.NewRealTimeConsumer(context.Background()).FromSessions(session)
+	consumer := etw.NewRealTimeConsumer(context.Background()).FromSessions(rt)
 	// Собственные обратные вызовы: стандартные кладут события в канал, который
 	// никто не читает, и блокируются. Полный разбор события отключён
 	// (EventCallback == nil), свойства читаются точечно в PreparedCallback.
@@ -200,7 +304,7 @@ func startETW(dispatch func(rawEvent)) error {
 		_, ok = wanted(prov, record.EventHeader.EventDescriptor.Id)
 		return ok
 	}
-	consumer.PreparedCallback = func(helper *etw.EventRecordHelper) (err error) {
+	consumer.PreparedCallback = func(helper *etw.EventRecordHelper) error {
 		defer func() { _ = recover() }()
 		prov, ok := classify(helper.EventRec)
 		if !ok {
@@ -222,28 +326,45 @@ func startETW(dispatch func(rawEvent)) error {
 	}
 	if err := consumer.Start(); err != nil {
 		_ = consumer.Stop()
-		_ = session.Stop()
-		return fmt.Errorf("потребитель ETW: %w", err)
+		_ = rt.Stop()
+		return nil, fmt.Errorf("потребитель ETW: %w", err)
 	}
-	return nil
+
+	var once sync.Once
+	return &session{
+		// Consumer встраивает sync.WaitGroup: Wait возвращается, когда
+		// завершились все ProcessTrace (в том числе при остановке снаружи).
+		wait: consumer.Wait,
+		stop: func() {
+			once.Do(func() {
+				_ = consumer.Stop()
+				_ = rt.Stop()
+			})
+		},
+	}, nil
 }
 
 // Run подписывает приёмник на общий поток событий ETW и ждёт отмены контекста.
-// Если сессию не удалось запустить (нет прав), возвращается ошибка, а следующий
-// Run попробует снова. Общий потребитель не останавливается.
+// Если сессию не удалось запустить (нет прав) или она остановлена снаружи,
+// возвращается ошибка, а следующий Run запустит сессию заново.
 func (etwSource) Run(ctx context.Context, sink func(Event)) error {
 	return runOnHub(ctx, shared, sink)
 }
 
 func runOnHub(ctx context.Context, h *hub, sink func(Event)) error {
-	if err := h.ensure(); err != nil {
+	gen, err := h.ensure()
+	if err != nil {
 		return err
 	}
 	l := &listener{files: newFileTable(), toDOS: newDosMap().toDOS, sink: sink}
 	unsubscribe := h.subscribe(l.handle)
 	defer unsubscribe()
-	<-ctx.Done()
-	return nil
+	select {
+	case <-ctx.Done():
+		return nil
+	case <-gen.dead:
+		return gen.err // nil при намеренной остановке
+	}
 }
 
 // listener превращает события ETW одного запуска Run в события источника.

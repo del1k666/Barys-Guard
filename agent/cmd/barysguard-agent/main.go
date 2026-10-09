@@ -16,6 +16,7 @@ import (
 	"github.com/barysguard/agent/internal/buffer"
 	"github.com/barysguard/agent/internal/collectors"
 	"github.com/barysguard/agent/internal/collectors/lifecycle"
+	"github.com/barysguard/agent/internal/collectors/netupload"
 	"github.com/barysguard/agent/internal/config"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/keystore"
@@ -181,6 +182,9 @@ func commandRun(args []string) error {
 		return err
 	}
 	defer agent.Close()
+	// Сессия ETW сетевого сборщика живёт в ядре дольше процесса: при штатном
+	// завершении её нужно остановить, иначе останется сирота.
+	defer netupload.Shutdown()
 
 	// Сигнал завершения обязан останавливать цикл, а не обрывать его
 	// посреди отправки результата команды.
