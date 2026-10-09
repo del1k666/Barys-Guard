@@ -127,6 +127,26 @@ describe("RuleDialog: правка", () => {
     expect(dialog.querySelector("mark")).toBeNull();
   });
 
+  it("подсвечивает совпадение по кодовым точкам после эмодзи", async () => {
+    setup({
+      "POST /rules/test": json(200, {
+        ok: true,
+        error: null,
+        count: 1,
+        matches: [{ start: 2, end: 10 }],
+      }),
+    });
+    renderPage(<RulesPage />, route);
+
+    const dialog = await openEdit("Номер договора");
+    await userEvent.type(within(dialog).getByLabelText("Шаблон"), "x");
+    await userEvent.type(within(dialog).getByLabelText("Тестовый текст"), "😀 ALFA-123");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Проверить" }));
+
+    await within(dialog).findByText("Совпадений: 1");
+    expect(dialog.querySelector("mark")?.textContent).toBe("ALFA-123");
+  });
+
   it("запоздавший ответ проверки не засчитывается для изменённого шаблона", async () => {
     let release: (response: Response) => void = () => {};
     const pending = new Promise<Response>((resolve) => {

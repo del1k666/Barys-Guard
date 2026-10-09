@@ -28,4 +28,32 @@ describe("highlight", () => {
     expect(parts.map((p) => p.text).join("")).toBe("abcdef");
     expect(parts.filter((p) => p.hit).map((p) => p.text)).toEqual(["bcd", "f"]);
   });
+
+  it("смещения — в кодовых точках: эмодзи до совпадения не сдвигают подсветку", () => {
+    expect(highlight("😀 ALFA-123", [{ start: 2, end: 10 }])).toEqual([
+      { text: "😀 ", hit: false },
+      { text: "ALFA-123", hit: true },
+    ]);
+  });
+
+  it("эмодзи внутри совпадения и несколько совпадений", () => {
+    expect(
+      highlight("😀😀 a😀b c 😀 d", [
+        { start: 3, end: 6 },
+        { start: 11, end: 12 },
+      ]),
+    ).toEqual([
+      { text: "😀😀 ", hit: false },
+      { text: "a😀b", hit: true },
+      { text: " c 😀 ", hit: false },
+      { text: "d", hit: true },
+    ]);
+  });
+
+  it("выход за границы в кодовых точках обрезается без падения", () => {
+    expect(highlight("😀ab", [{ start: 1, end: 99 }, { start: 50, end: 60 }])).toEqual([
+      { text: "😀", hit: false },
+      { text: "ab", hit: true },
+    ]);
+  });
 });
