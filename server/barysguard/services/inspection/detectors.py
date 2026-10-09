@@ -103,6 +103,8 @@ class Detector(Protocol):
 
         Совпадения не пересекаются и идут по возрастанию начала; результат для позиции
         зависит только от текста вокруг неё, а не от того, откуда начат поиск.
+        Пустой образец ("") означает «участок поглощён, но не засчитан» (например, слишком
+        длинное совпадение): сканер продолжит поиск за его концом и не посчитает остаток.
         """
         ...
 
@@ -239,6 +241,7 @@ class ContentScanner:
         """Считает совпадения детектора, начавшиеся до `end`; возвращает позицию продолжения."""
         consumed = self._resume[index]
         for sample, match_end in detector.find(data, max(self._context, consumed), end):
-            self._findings[detector.key].add(sample)
+            if sample:
+                self._findings[detector.key].add(sample)
             consumed = match_end
         return consumed

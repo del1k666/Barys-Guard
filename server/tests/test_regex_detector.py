@@ -57,6 +57,17 @@ def test_match_longer_than_the_limit_is_ignored() -> None:
     assert _scan("xxxxxxx", detector)["c"].count == 1
 
 
+@pytest.mark.parametrize("size", [1, 2, 5, 7, 11, 13, 25, 100])
+def test_overlong_run_is_not_counted_by_its_suffix_at_any_chunking(size: int) -> None:
+    detector = RegexDetector("c", r"x{5,}", max_match=10)
+    text = "x" * 40 + " end"
+    scanner = ContentScanner([detector])
+    for start in range(0, len(text), size):
+        scanner.feed(text[start : start + size])
+
+    assert scanner.finish()["c"].count == 0
+
+
 @pytest.mark.parametrize("pattern", [r"(?=a)b", r"(?<=a)b", r"(a)\1", "(", "[a-"])
 def test_unsupported_or_broken_patterns_raise_pattern_error(pattern: str) -> None:
     with pytest.raises(PatternError) as caught:

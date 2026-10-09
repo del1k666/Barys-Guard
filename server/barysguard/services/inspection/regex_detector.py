@@ -41,12 +41,24 @@ class RegexDetector:
         self._pattern = compile_pattern(pattern, ignore_case)
 
     def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+        # Поиск мог начаться внутри уже поглощённого участка (длинное совпадение,
+        # оборванное срезом порции): совпадение, заходящее на `start` с предыдущего
+        # символа, — продолжение прошлого, его остаток не засчитывается.
+        if start > 0:
+            earlier = self._pattern.match(data, start - 1)
+            if earlier is not None and earlier.end() > start:
+                yield "", earlier.end()
+                start = earlier.end()
         for match in self._pattern.finditer(data, start):
             if match.start() >= end:
                 return
             length = match.end() - match.start()
-            # Пустые и слишком длинные совпадения не засчитываются: перекрытие
-            # на стыке порций рассчитано на max_match.
-            if length == 0 or length > self._max_match:
+            if length == 0:
+                continue
+            # Слишком длинное совпадение не засчитывается (перекрытие на стыке порций
+            # рассчитано на max_match), но поглощается: иначе его остаток после среза
+            # порции или хвоста засчитался бы как короткое совпадение.
+            if length > self._max_match:
+                yield "", match.end()
                 continue
             yield mask_tail(match.group()), match.end()
