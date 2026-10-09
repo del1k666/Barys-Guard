@@ -13,6 +13,7 @@ export const ru = {
     agents: "Агенты",
     events: "События",
     incidents: "Инциденты",
+    rules: "Правила",
     menu: "Меню",
     logout: "Выйти",
     roles: { admin: "Администратор", operator: "Оператор" } as Record<string, string>,
@@ -244,6 +245,30 @@ export const ru = {
       high: "Высокая",
       critical: "Критическая",
     } as Record<string, string>,
+  },
+
+  rules: {
+    title: "Правила",
+    tabs: { list: "Правила", guide: "Как создавать правила", label: "Разделы" },
+    caption: "Правила инспекции содержимого",
+    columns: {
+      title: "Название",
+      type: "Тип",
+      enabled: "Включено",
+      weight: "Вес",
+      cap: "Потолок",
+      version: "Версия",
+    },
+    kinds: { detector: "Встроенное", dictionary: "Словарь", regex: "Шаблон" } as Record<string, string>,
+    builtin: "встроенное",
+    create: "Создать правило",
+    edit: "Изменить",
+    toggle: (title: string) => `Включить правило «${title}»`,
+    toggled: { on: "Правило включено", off: "Правило отключено" },
+    empty: "Правил пока нет",
+    emptyHint: "Выполните barysguard-admin seed-rules, чтобы завести встроенные правила.",
+    adminOnly: "Правила доступны только администратору",
+    cannotDisableLast: "Нельзя отключить последнее включённое правило",
   },
 
   incidents: {

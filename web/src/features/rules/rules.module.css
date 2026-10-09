@@ -1,0 +1,57 @@
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 8px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tabActive {
+  border-bottom-color: var(--accent);
+  color: inherit;
+  font-weight: 650;
+}
+
+.note {
+  color: var(--muted);
+}
+
+.builtin {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.hit {
+  background: var(--warn-bg, rgba(255, 200, 0, 0.35));
+}
+
+.sample {
+  white-space: pre-wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

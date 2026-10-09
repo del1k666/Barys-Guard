@@ -9,6 +9,7 @@ import { LoginPage } from "./features/auth/LoginPage";
 import { EventsPage } from "./features/events/EventsPage";
 import { IncidentsPage } from "./features/incidents/IncidentsPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
+import { RulesPage } from "./features/rules/RulesPage";
 
 export function App() {
   return (
@@ -26,6 +27,7 @@ export function App() {
         <Route path="agents/:id" element={<AgentDetailPage />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="incidents" element={<IncidentsPage />} />
+        <Route path="rules" element={<RulesPage />} />
         <Route path="password"element={<ChangePasswordPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

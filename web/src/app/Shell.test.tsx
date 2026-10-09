@@ -70,4 +70,21 @@ describe("Shell", () => {
     expect(screen.getByText("содержимое")).toBeInTheDocument();
     expect(calls.filter((call) => call.path === "POST /auth/logout")).toHaveLength(1);
   });
+
+  it("администратору показывает ссылку «Правила»", async () => {
+    mockApi({ "GET /auth/me": json(200, ADMIN) });
+
+    renderPage(shellPage());
+
+    expect(await screen.findByRole("link", { name: "Правила" })).toHaveAttribute("href", "/rules");
+  });
+
+  it("оператору не показывает ссылку «Правила»", async () => {
+    mockApi({ "GET /auth/me": json(200, OPERATOR) });
+
+    renderPage(shellPage());
+
+    await screen.findByText("содержимое");
+    expect(screen.queryByRole("link", { name: "Правила" })).not.toBeInTheDocument();
+  });
 });

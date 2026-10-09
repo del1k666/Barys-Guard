@@ -75,6 +75,11 @@ export function Shell() {
             <NavLink to="/incidents" className={linkClass}>
               {ru.nav.incidents}
             </NavLink>
+            {user?.role === "admin" ? (
+              <NavLink to="/rules" className={linkClass}>
+                {ru.nav.rules}
+              </NavLink>
+            ) : null}
           </nav>
         )}
 
