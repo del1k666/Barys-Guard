@@ -2,6 +2,7 @@ package netupload
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"sync"
@@ -16,14 +17,17 @@ import (
 )
 
 const (
-	eventQueue     = 4096
-	jobQueue       = 64
-	hashDeadline   = 5 * time.Second
-	defaultReport  = time.Minute
-	dnsTTL         = 5 * time.Minute
-	dnsCacheSize   = 8192
-	maxProcesses   = 256
-	maxReadsPerPID = 64
+	eventQueue          = 4096
+	jobQueue            = 64
+	hashDeadline        = 5 * time.Second
+	defaultReport       = time.Minute
+	dnsTTL              = 5 * time.Minute
+	dnsCacheSize        = 8192
+	maxProcesses        = 256
+	maxReadsPerPID      = 64
+	defaultRetryMin     = 30 * time.Second
+	defaultRetryMax     = 5 * time.Minute
+	defaultHealthyAfter = 2 * time.Minute
 	// readRetention — сколько хранится запись о чтении файла.
 	readRetention = 10 * time.Minute
 )
@@ -40,6 +44,12 @@ type Deps struct {
 	Now         func() time.Time
 	// ReportEvery — как часто сообщать о потерянных событиях.
 	ReportEvery time.Duration
+	// RetryMin и RetryMax — пауза перед повторным запуском отказавшего источника:
+	// начинается с RetryMin, удваивается, не превышает RetryMax.
+	RetryMin, RetryMax time.Duration
+	// HealthyAfter — сколько источник должен проработать, чтобы пауза сбросилась
+	// и следующий сбой считался новой неполадкой.
+	HealthyAfter time.Duration
 }
 
 // Collector реализует events.Collector.
@@ -64,6 +74,15 @@ func New(deps Deps) *Collector {
 	}
 	if deps.ReportEvery <= 0 {
 		deps.ReportEvery = defaultReport
+	}
+	if deps.RetryMin <= 0 {
+		deps.RetryMin = defaultRetryMin
+	}
+	if deps.RetryMax < deps.RetryMin {
+		deps.RetryMax = max(deps.RetryMin, defaultRetryMax)
+	}
+	if deps.HealthyAfter <= 0 {
+		deps.HealthyAfter = defaultHealthyAfter
 	}
 	dns := NewDNSCache(dnsCacheSize)
 	reads := NewReads(readRetention, maxProcesses, maxReadsPerPID)
@@ -104,9 +123,10 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 
 	in := make(chan Event, eventQueue)
 	jobs := make(chan Match, jobQueue)
-	sourceDone := make(chan error, 1)
+	workers.Add(1)
 	go func() {
-		sourceDone <- c.deps.Source.Run(ctx, func(ev Event) { c.enqueue(in, ev) })
+		defer workers.Done()
+		c.superviseSource(ctx, in, emit)
 	}()
 
 	// Снятие копии читает диск и может ждать занятый файл: отдельный поток,
@@ -130,14 +150,6 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-sourceDone:
-			if err != nil && ctx.Err() == nil {
-				slog.Warn("сборщик netupload недоступен", "error", err)
-				c.emitAgent(emit, "netupload_unavailable", events.SeverityMedium, map[string]any{
-					"component": "netupload", "detail": err.Error(),
-				})
-			}
-			return nil
 		case ev := <-in:
 			c.handle(ev, jobs)
 		case <-ticker.C:
@@ -147,6 +159,49 @@ func (c *Collector) Run(ctx context.Context, emit func(events.Envelope)) error {
 				})
 			}
 		}
+	}
+}
+
+// nextRetryDelay удваивает паузу, но не больше limit.
+func nextRetryDelay(delay, limit time.Duration) time.Duration {
+	return min(delay*2, limit)
+}
+
+// superviseSource запускает источник и перезапускает его после сбоя с растущей
+// паузой: иначе временная неполадка (нет прав, остановленная снаружи сессия)
+// отключала бы обнаружение до перезапуска агента. О неполадке сообщается один
+// раз; пауза сбрасывается, когда источник проработал дольше HealthyAfter.
+func (c *Collector) superviseSource(ctx context.Context, in chan<- Event, emit func(events.Envelope)) {
+	delay := c.deps.RetryMin
+	reported := false
+	for {
+		started := time.Now()
+		err := c.deps.Source.Run(ctx, func(ev Event) { c.enqueue(in, ev) })
+		if ctx.Err() != nil {
+			return
+		}
+		if time.Since(started) >= c.deps.HealthyAfter {
+			delay = c.deps.RetryMin
+			reported = false
+		}
+		if err == nil {
+			err = errors.New("источник завершился без отмены")
+		}
+		slog.Warn("сборщик netupload недоступен", "error", err, "retry_in", delay)
+		if !reported {
+			reported = true
+			c.emitAgent(emit, "netupload_unavailable", events.SeverityMedium, map[string]any{
+				"component": "netupload", "detail": err.Error(),
+			})
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		delay = nextRetryDelay(delay, c.deps.RetryMax)
 	}
 }
 

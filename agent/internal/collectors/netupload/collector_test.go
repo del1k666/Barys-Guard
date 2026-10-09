@@ -209,9 +209,60 @@ func TestLockedFileStillReportsWithoutArtifact(t *testing.T) {
 	}
 }
 
+// attemptSource — источник, поведением каждой попытки управляет функция.
+type attemptSource struct {
+	mu       sync.Mutex
+	attempts int
+	script   func(attempt int, ctx context.Context, sink func(Event)) error
+}
+
+func (s *attemptSource) Run(ctx context.Context, sink func(Event)) error {
+	s.mu.Lock()
+	s.attempts++
+	n := s.attempts
+	s.mu.Unlock()
+	return s.script(n, ctx, sink)
+}
+
+func (s *attemptSource) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.attempts
+}
+
+func waitAttempts(t *testing.T, s *attemptSource, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if s.count() >= want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("попыток %d, ожидалось не меньше %d", s.count(), want)
+}
+
+func retryDeps(source Source) Deps {
+	deps := testDeps(source, hasherWith(nil, nil))
+	deps.RetryMin = 5 * time.Millisecond
+	deps.RetryMax = 20 * time.Millisecond
+	deps.HealthyAfter = time.Hour
+	return deps
+}
+
+func countAction(list []events.Envelope, action string) int {
+	n := 0
+	for _, env := range list {
+		if env.Action == action {
+			n++
+		}
+	}
+	return n
+}
+
 func TestUnavailableSourceIsReportedAndDoesNotCrash(t *testing.T) {
 	source := &scriptSource{err: errors.New("Access is denied"), done: make(chan struct{})}
-	out, stop := run(t, testDeps(source, hasherWith(nil, nil)))
+	out, stop := run(t, retryDeps(source))
 	defer stop()
 
 	got := out.waitFor(t, 1)
@@ -221,6 +272,128 @@ func TestUnavailableSourceIsReportedAndDoesNotCrash(t *testing.T) {
 	}
 	if got[0].Subject["component"] != "netupload" {
 		t.Fatalf("subject = %v", got[0].Subject)
+	}
+}
+
+func TestFailingSourceIsRetriedWithoutEventSpam(t *testing.T) {
+	source := &attemptSource{script: func(int, context.Context, func(Event)) error {
+		return errors.New("Access is denied")
+	}}
+	out, stop := run(t, retryDeps(source))
+	waitAttempts(t, source, 5)
+	stop()
+	if n := countAction(out.snapshot(), "netupload_unavailable"); n != 1 {
+		t.Fatalf("событий netupload_unavailable %d, ожидалось 1", n)
+	}
+}
+
+func TestSourceRecoversAfterTwoFailures(t *testing.T) {
+	source := &attemptSource{}
+	source.script = func(n int, ctx context.Context, sink func(Event)) error {
+		if n <= 2 {
+			return errors.New("сессия ETW остановлена")
+		}
+		for _, ev := range uploadFeed(`C:\Users\a\plan.pdf`, 1000) {
+			sink(ev)
+		}
+		<-ctx.Done()
+		return nil
+	}
+	out, stop := run(t, retryDeps(source))
+	defer stop()
+
+	got := out.waitFor(t, 2)
+
+	if got[0].Action != "netupload_unavailable" {
+		t.Fatalf("первым ожидалось netupload_unavailable: %s", got[0].Action)
+	}
+	if got[1].Action != "upload" {
+		t.Fatalf("после восстановления ожидалась отправка файла: %s", got[1].Action)
+	}
+	if source.count() != 3 {
+		t.Fatalf("попыток %d, ожидалось 3", source.count())
+	}
+	if n := countAction(out.snapshot(), "netupload_unavailable"); n != 1 {
+		t.Fatalf("событий netupload_unavailable %d, ожидалось 1", n)
+	}
+}
+
+func TestRunReturnsPromptlyOnCancelDuringBackoff(t *testing.T) {
+	source := &attemptSource{script: func(int, context.Context, func(Event)) error {
+		return errors.New("нет прав")
+	}}
+	deps := retryDeps(source)
+	deps.RetryMin = time.Hour
+	deps.RetryMax = time.Hour
+	out, stop := run(t, deps)
+	out.waitFor(t, 1)
+	start := time.Now()
+	stop() // сама проверяет возврат Run за 3 секунды
+	if time.Since(start) > time.Second {
+		t.Fatalf("отмена в паузе заняла %v", time.Since(start))
+	}
+	if source.count() != 1 {
+		t.Fatalf("попыток %d, ожидалась 1", source.count())
+	}
+}
+
+func TestNewOutageAfterHealthyPeriodIsReportedAgain(t *testing.T) {
+	source := &attemptSource{}
+	source.script = func(n int, ctx context.Context, _ func(Event)) error {
+		switch n {
+		case 1:
+			return errors.New("нет прав")
+		case 2:
+			select { // работал дольше HealthyAfter, затем упал
+			case <-time.After(40 * time.Millisecond):
+				return errors.New("сессия ETW остановлена")
+			case <-ctx.Done():
+				return nil
+			}
+		}
+		<-ctx.Done()
+		return nil
+	}
+	deps := retryDeps(source)
+	deps.HealthyAfter = 20 * time.Millisecond
+	out, stop := run(t, deps)
+	defer stop()
+
+	got := out.waitFor(t, 2)
+
+	if countAction(got, "netupload_unavailable") != 2 {
+		t.Fatalf("ожидалось два сообщения о недоступности: %+v", got)
+	}
+}
+
+func TestSourceReturningNilWithoutCancelIsRetried(t *testing.T) {
+	source := &attemptSource{script: func(n int, ctx context.Context, _ func(Event)) error {
+		if n == 1 {
+			return nil
+		}
+		<-ctx.Done()
+		return nil
+	}}
+	out, stop := run(t, retryDeps(source))
+	defer stop()
+	waitAttempts(t, source, 2)
+	if n := countAction(out.waitFor(t, 1), "netupload_unavailable"); n != 1 {
+		t.Fatalf("нормальное завершение без отмены должно считаться сбоем: %d", n)
+	}
+}
+
+func TestNextRetryDelayDoublesAndCaps(t *testing.T) {
+	delay := 30 * time.Second
+	var seen []time.Duration
+	for i := 0; i < 6; i++ {
+		seen = append(seen, delay)
+		delay = nextRetryDelay(delay, 5*time.Minute)
+	}
+	want := []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 4 * time.Minute, 5 * time.Minute, 5 * time.Minute}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("задержки %v, ожидалось %v", seen, want)
+		}
 	}
 }
 
