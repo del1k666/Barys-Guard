@@ -95,6 +95,24 @@ def test_chunk_sweep_is_invariant_for_overlong_and_short_runs(pattern: str) -> N
         assert scanner.finish()["c"].count == whole, (pattern, size)
 
 
+@pytest.mark.parametrize(
+    ("pattern", "text"),
+    [
+        (r"x{5,}", "x" * 40 + " end"),
+        (r"x{12}", "x" * 40 + " end"),
+        (r"\d{6,}", "ab " + "7" * 45 + " cd 123456 ef"),
+        (r"x{5,}", "x" * 11 + " " + "x" * 3 + " " + "x" * 30),
+    ],
+)
+def test_overlong_run_is_skipped_at_every_chunk_size(pattern: str, text: str) -> None:
+    whole = _scan(text, RegexDetector("c", pattern, max_match=10))["c"].count
+    for size in range(1, 70):
+        scanner = ContentScanner([RegexDetector("c", pattern, max_match=10)])
+        for start in range(0, len(text), size):
+            scanner.feed(text[start : start + size])
+        assert scanner.finish()["c"].count == whole, (pattern, size)
+
+
 @pytest.mark.parametrize("pattern", [r"(?=a)b", r"(?<=a)b", r"(a)\1", "(", "[a-"])
 def test_unsupported_or_broken_patterns_raise_pattern_error(pattern: str) -> None:
     with pytest.raises(PatternError) as caught:

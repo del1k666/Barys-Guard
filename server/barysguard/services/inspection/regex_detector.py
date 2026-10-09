@@ -43,13 +43,17 @@ class RegexDetector:
     def skip_rest(self, data: str, pos: int) -> int:
         """Конец продолжения поглощённого длинного совпадения, оборванного на `pos`.
 
-        Вызывается сканером только если прошлый участок кончился ровно на конце данных
-        (символ перед `pos` принадлежит длинному совпадению); иначе возвращает `pos`.
+        Вызывается сканером только если прошлый участок кончился ровно на конце данных.
+        Хвост сканера хранит не меньше max_match + 2 символов до `pos`, поэтому начало
+        совпадения ищется среди них: первая позиция, с которой совпадение заходит за `pos`.
+        Точно, если уже эти символы удовлетворяют шаблону (его минимальная длина не больше
+        хранимого хвоста); иначе остаток считается по прежнему правилу и не продолжается.
         """
-        if pos <= 0:
-            return pos
-        earlier = self._pattern.match(data, pos - 1)
-        return earlier.end() if earlier is not None and earlier.end() > pos else pos
+        for begin in range(max(pos - self._max_match - 2, 0), pos):
+            earlier = self._pattern.match(data, begin)
+            if earlier is not None and earlier.end() > pos:
+                return int(earlier.end())
+        return pos
 
     def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
         for match in self._pattern.finditer(data, start):
