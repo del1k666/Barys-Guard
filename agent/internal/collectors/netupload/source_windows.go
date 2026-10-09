@@ -4,128 +4,263 @@ package netupload
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"sync"
 	"time"
 
-	"github.com/bi-zone/etw"
-	"golang.org/x/sys/windows"
+	"github.com/0xrawsec/golang-etw/etw"
 )
+
+// sessionName — имя единственной сессии ETW агента.
+const sessionName = "BarysGuard-NetUpload"
 
 type etwSource struct{}
 
-// NewSource возвращает источник на основе сессий ETW.
+// NewSource возвращает источник на основе общей для процесса сессии ETW.
 func NewSource() Source { return etwSource{} }
 
-type feed struct {
-	name     string
-	guid     windows.GUID
-	keywords uint64
-	handle   etw.EventCallback
+// provKind — какой из трёх провайдеров породил событие.
+type provKind int
+
+const (
+	provFile provKind = iota + 1
+	provNet
+	provDNS
+)
+
+// rawEvent — событие ETW с уже разобранными нужными свойствами.
+type rawEvent struct {
+	prov  provKind
+	id    uint16
+	pid   uint32
+	at    time.Time
+	props map[string]interface{}
 }
 
-// openSession создаёт сессию ETW. Если сессия с таким именем осталась от
-// аварийно завершившегося запуска (ExistsError), она один раз принудительно
-// останавливается и создание повторяется — иначе источник был бы недоступен
-// до перезагрузки.
-func openSession(f feed) (*etw.Session, error) {
-	options := []etw.Option{etw.WithName(f.name)}
-	if f.keywords != 0 {
-		options = append(options, etw.WithMatchKeywords(f.keywords, 0))
-	}
-	session, err := etw.NewSession(f.guid, options...)
-	var exists etw.ExistsError
-	if errors.As(err, &exists) {
-		if killErr := etw.KillSession(exists.SessionName); killErr != nil {
-			return nil, fmt.Errorf("%w (остановить старую сессию не удалось: %v)", err, killErr)
-		}
-		session, err = etw.NewSession(f.guid, options...)
-	}
-	return session, err
+// wantedProps — какие события нужны и какие свойства у них читать. Всё
+// остальное отбрасывается до разбора свойств.
+var wantedProps = map[provKind]map[uint16][]string{
+	provFile: {
+		idFileCreate: {propFileObject, propFileName},
+		idFileRead:   {propFileObject},
+		idFileClose:  {propFileObject},
+	},
+	provNet: {
+		idTCPv4Send: {propNetPID, propNetSize, propNetDest},
+		idTCPv6Send: {propNetPID, propNetSize, propNetDest},
+		idUDPv4Send: {propNetPID, propNetSize, propNetDest},
+		idUDPv6Send: {propNetPID, propNetSize, propNetDest},
+	},
+	provDNS: {
+		idDNSQueryDone: {propDNSName, propDNSResults},
+	},
 }
 
-// safe оборачивает обработчик событий: паника на неожиданном событии не должна
-// ронять агента (обработчик вызывается из потока ETW).
-func safe(handle func(*etw.Event)) etw.EventCallback {
-	return func(e *etw.Event) {
-		defer func() { _ = recover() }()
-		handle(e)
+var (
+	guidFile = etw.MustParseGUIDFromString(guidKernelFile)
+	guidNet  = etw.MustParseGUIDFromString(guidKernelNetwork)
+	guidDNS  = etw.MustParseGUIDFromString(guidDNSClient)
+)
+
+// classify определяет провайдера по заголовку записи события.
+func classify(record *etw.EventRecord) (provKind, bool) {
+	provider := &record.EventHeader.ProviderId
+	switch {
+	case provider.Equals(guidFile):
+		return provFile, true
+	case provider.Equals(guidNet):
+		return provNet, true
+	case provider.Equals(guidDNS):
+		return provDNS, true
 	}
+	return 0, false
 }
 
-// Run открывает три сессии ETW (файлы, сеть, DNS) и работает до отмены контекста.
-// После отмены все сессии закрываются и Run возвращается без ожидания событий:
-// группа сборщиков перезапускается при смене конфигурации и ждёт Run.
-func (etwSource) Run(ctx context.Context, sink func(Event)) error {
-	files := newFileTable()
-	dos := newDosMap()
-	feeds := []feed{
-		{"BarysGuard-NetUpload-File", guidKernelFile, keywordsKernelFile, safe(func(e *etw.Event) {
-			props, err := e.EventProperties()
-			if err != nil {
-				return
-			}
-			handleFileProps(e.Header.ID, e.Header.ProcessID, e.Header.TimeStamp, props, files, dos.toDOS, sink)
-		})},
-		{"BarysGuard-NetUpload-Net", guidKernelNetwork, 0, safe(func(e *etw.Event) {
-			if !isNetworkSend(e.Header.ID) {
-				return
-			}
-			props, err := e.EventProperties()
-			if err != nil {
-				return
-			}
-			handleNetworkProps(e.Header.ID, e.Header.ProcessID, e.Header.TimeStamp, props, sink)
-		})},
-		{"BarysGuard-NetUpload-DNS", guidDNSClient, 0, safe(func(e *etw.Event) {
-			if e.Header.ID != idDNSQueryDone {
-				return
-			}
-			props, err := e.EventProperties()
-			if err != nil {
-				return
-			}
-			handleDNSProps(e.Header.ID, e.Header.TimeStamp, props, sink)
-		})},
-	}
+// wanted сообщает, нужно ли событие (проверка по заголовку, без разбора свойств).
+func wanted(prov provKind, id uint16) ([]string, bool) {
+	names, ok := wantedProps[prov][id]
+	return names, ok
+}
 
-	var sessions []*etw.Session
-	closeAll := func() {
-		for _, session := range sessions {
-			_ = session.Close()
+// collectProps читает именованные свойства через get; нечитаемые пропускаются.
+func collectProps(get func(string) (string, error), names []string) map[string]interface{} {
+	props := make(map[string]interface{}, len(names))
+	for _, name := range names {
+		if value, err := get(name); err == nil {
+			props[name] = value
 		}
 	}
-	for _, f := range feeds {
-		session, err := openSession(f)
-		if err != nil {
-			closeAll()
-			return fmt.Errorf("сессия ETW %s: %w", f.name, err)
-		}
-		sessions = append(sessions, session)
-	}
+	return props
+}
 
-	results := make(chan error, len(sessions))
-	for index, session := range sessions {
-		handle := feeds[index].handle
-		go func() { results <- session.Process(handle) }()
-	}
+// hub — общий для процесса приёмник ETW. Сессия и потребитель запускаются один
+// раз: каждый запуск потребителя навсегда занимает слоты обратных вызовов
+// syscall (их около 1024 на процесс), поэтому перезапуск группы сборщиков
+// не должен создавать новые. Каждый Source.Run лишь подписывается на события.
+type hub struct {
+	startMu sync.Mutex
+	started bool
+	start   func(dispatch func(rawEvent)) error
 
-	select {
-	case <-ctx.Done():
-		closeAll()
-		for range sessions {
-			<-results
-		}
+	mu        sync.RWMutex
+	next      int
+	listeners map[int]func(rawEvent)
+}
+
+func newHub(start func(dispatch func(rawEvent)) error) *hub {
+	return &hub{start: start, listeners: map[int]func(rawEvent){}}
+}
+
+// ensure запускает сессию, если она ещё не запущена. После неудачи следующий
+// вызов пробует снова.
+func (h *hub) ensure() error {
+	h.startMu.Lock()
+	defer h.startMu.Unlock()
+	if h.started {
 		return nil
-	case err := <-results:
-		closeAll()
-		for i := 1; i < len(sessions); i++ {
-			<-results
-		}
-		if err == nil {
-			err = errors.New("сессия ETW завершилась без ошибки")
-		}
+	}
+	if err := h.start(h.dispatch); err != nil {
 		return err
+	}
+	h.started = true
+	return nil
+}
+
+func (h *hub) subscribe(listener func(rawEvent)) (unsubscribe func()) {
+	h.mu.Lock()
+	h.next++
+	id := h.next
+	h.listeners[id] = listener
+	h.mu.Unlock()
+	return func() {
+		h.mu.Lock()
+		delete(h.listeners, id)
+		h.mu.Unlock()
+	}
+}
+
+// dispatch раздаёт событие подписчикам. Паника подписчика не выходит наружу:
+// вызов идёт из потока ETW и не должен ронять агента.
+func (h *hub) dispatch(event rawEvent) {
+	h.mu.RLock()
+	snapshot := make([]func(rawEvent), 0, len(h.listeners))
+	for _, listener := range h.listeners {
+		snapshot = append(snapshot, listener)
+	}
+	h.mu.RUnlock()
+	for _, listener := range snapshot {
+		func() {
+			defer func() { _ = recover() }()
+			listener(event)
+		}()
+	}
+}
+
+// shared — единственный приёмник процесса.
+var shared = newHub(startETW)
+
+// startETW создаёт сессию с тремя провайдерами и запускает потребитель. Сессия
+// остаётся работать до конца процесса, потребитель никогда не останавливается.
+// Устаревшую сессию с тем же именем (после аварийного завершения) библиотека
+// останавливает и создаёт заново сама.
+func startETW(dispatch func(rawEvent)) error {
+	session := etw.NewRealTimeSession(sessionName)
+	providers := []etw.Provider{
+		{GUID: guidKernelFile, Name: "Microsoft-Windows-Kernel-File", EnableLevel: 0xFF,
+			MatchAnyKeyword: keywordsKernelFile,
+			Filter:          []uint16{idFileCreate, idFileClose, idFileRead}},
+		{GUID: guidKernelNetwork, Name: "Microsoft-Windows-Kernel-Network", EnableLevel: 0xFF,
+			Filter: []uint16{idTCPv4Send, idTCPv6Send, idUDPv4Send, idUDPv6Send}},
+		{GUID: guidDNSClient, Name: "Microsoft-Windows-DNS-Client", EnableLevel: 0xFF,
+			Filter: []uint16{idDNSQueryDone}},
+	}
+	for _, provider := range providers {
+		if err := session.EnableProvider(provider); err != nil {
+			_ = session.Stop()
+			return fmt.Errorf("сессия ETW, провайдер %s: %w", provider.Name, err)
+		}
+	}
+
+	consumer := etw.NewRealTimeConsumer(context.Background()).FromSessions(session)
+	// Собственные обратные вызовы: стандартные кладут события в канал, который
+	// никто не читает, и блокируются. Полный разбор события отключён
+	// (EventCallback == nil), свойства читаются точечно в PreparedCallback.
+	consumer.EventRecordHelperCallback = nil
+	consumer.EventCallback = nil
+	consumer.EventRecordCallback = func(record *etw.EventRecord) (keep bool) {
+		defer func() {
+			if recover() != nil {
+				keep = false
+			}
+		}()
+		prov, ok := classify(record)
+		if !ok {
+			return false
+		}
+		_, ok = wanted(prov, record.EventHeader.EventDescriptor.Id)
+		return ok
+	}
+	consumer.PreparedCallback = func(helper *etw.EventRecordHelper) (err error) {
+		defer func() { _ = recover() }()
+		prov, ok := classify(helper.EventRec)
+		if !ok {
+			return nil
+		}
+		id := helper.EventRec.EventHeader.EventDescriptor.Id
+		names, ok := wanted(prov, id)
+		if !ok {
+			return nil
+		}
+		dispatch(rawEvent{
+			prov:  prov,
+			id:    id,
+			pid:   helper.EventRec.EventHeader.ProcessId,
+			at:    helper.EventRec.EventHeader.UTCTimeStamp(),
+			props: collectProps(helper.GetPropertyString, names),
+		})
+		return nil
+	}
+	if err := consumer.Start(); err != nil {
+		_ = consumer.Stop()
+		_ = session.Stop()
+		return fmt.Errorf("потребитель ETW: %w", err)
+	}
+	return nil
+}
+
+// Run подписывает приёмник на общий поток событий ETW и ждёт отмены контекста.
+// Если сессию не удалось запустить (нет прав), возвращается ошибка, а следующий
+// Run попробует снова. Общий потребитель не останавливается.
+func (etwSource) Run(ctx context.Context, sink func(Event)) error {
+	return runOnHub(ctx, shared, sink)
+}
+
+func runOnHub(ctx context.Context, h *hub, sink func(Event)) error {
+	if err := h.ensure(); err != nil {
+		return err
+	}
+	l := &listener{files: newFileTable(), toDOS: newDosMap().toDOS, sink: sink}
+	unsubscribe := h.subscribe(l.handle)
+	defer unsubscribe()
+	<-ctx.Done()
+	return nil
+}
+
+// listener превращает события ETW одного запуска Run в события источника.
+type listener struct {
+	files *fileTable
+	toDOS func(string) string
+	sink  func(Event)
+}
+
+func (l *listener) handle(event rawEvent) {
+	switch event.prov {
+	case provFile:
+		handleFileProps(event.id, event.pid, event.at, event.props, l.files, l.toDOS, l.sink)
+	case provNet:
+		handleNetworkProps(event.id, event.pid, event.at, event.props, l.sink)
+	case provDNS:
+		handleDNSProps(event.id, event.at, event.props, l.sink)
 	}
 }
 

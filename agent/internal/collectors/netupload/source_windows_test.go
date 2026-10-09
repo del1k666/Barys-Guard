@@ -3,8 +3,10 @@
 package netupload
 
 import (
-	"github.com/bi-zone/etw"
+	"context"
+	"errors"
 	"net/netip"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -119,9 +121,146 @@ func TestHandleDNSProps(t *testing.T) {
 	}
 }
 
-func TestSafeRecoversPanic(t *testing.T) {
-	callback := safe(func(*etw.Event) { panic("битое событие") })
-	callback(nil) // паника не должна выйти наружу
+func TestCollectProps(t *testing.T) {
+	get := func(name string) (string, error) {
+		if name == "missing" {
+			return "", errors.New("нет свойства")
+		}
+		return "v-" + name, nil
+	}
+	props := collectProps(get, []string{"a", "missing", "b"})
+	if len(props) != 2 || props["a"] != "v-a" || props["b"] != "v-b" {
+		t.Fatalf("props: %v", props)
+	}
+}
+
+func TestWantedFiltersByProviderAndID(t *testing.T) {
+	if names, ok := wanted(provFile, idFileCreate); !ok || len(names) != 2 {
+		t.Fatalf("Create: %v %v", names, ok)
+	}
+	// 10 есть у сети, но у файлового провайдера это не нужное событие
+	if _, ok := wanted(provFile, 10); ok {
+		t.Fatal("id 10 файлового провайдера не нужен")
+	}
+	if _, ok := wanted(provNet, idTCPv4Send); !ok {
+		t.Fatal("отправка TCPv4 нужна")
+	}
+	if _, ok := wanted(provDNS, idDNSQueryDone); !ok {
+		t.Fatal("DNS 3008 нужен")
+	}
+	if _, ok := wanted(provKind(99), 1); ok {
+		t.Fatal("неизвестный провайдер")
+	}
+}
+
+func TestListenerRoutesByProvider(t *testing.T) {
+	var got []Event
+	l := &listener{files: newFileTable(), toDOS: fakeDOS, sink: func(e Event) { got = append(got, e) }}
+	l.handle(rawEvent{prov: provNet, id: idTCPv4Send, pid: 5, at: testAt,
+		props: map[string]interface{}{propNetSize: "10", propNetDest: "1.2.3.4"}})
+	// id 10 у файлового провайдера не должен восприниматься как отправка
+	l.handle(rawEvent{prov: provFile, id: 10, pid: 5, at: testAt,
+		props: map[string]interface{}{propNetSize: "10", propNetDest: "1.2.3.4"}})
+	if len(got) != 1 || got[0].Kind != KindSend {
+		t.Fatalf("события: %+v", got)
+	}
+}
+
+// fakeHub — приёмник без ETW; start считает вызовы и может падать.
+func fakeHub(fail *atomic.Bool, calls *atomic.Int32) *hub {
+	return newHub(func(func(rawEvent)) error {
+		calls.Add(1)
+		if fail.Load() {
+			return errors.New("нет прав")
+		}
+		return nil
+	})
+}
+
+func TestRunRetriesAfterFailedStart(t *testing.T) {
+	var fail atomic.Bool
+	var calls atomic.Int32
+	fail.Store(true)
+	h := fakeHub(&fail, &calls)
+	if err := runOnHub(context.Background(), h, func(Event) {}); err == nil {
+		t.Fatal("ожидалась ошибка запуска")
+	}
+	fail.Store(false)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := runOnHub(ctx, h, func(Event) {}); err != nil {
+		t.Fatalf("второй запуск: %v", err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("запусков сессии %d, ожидалось 2", calls.Load())
+	}
+	// успешный старт происходит один раз, сколько бы раз ни вызывали Run
+	_ = runOnHub(ctx, h, func(Event) {})
+	_ = runOnHub(ctx, h, func(Event) {})
+	if calls.Load() != 2 {
+		t.Fatalf("сессия запущена повторно: %d", calls.Load())
+	}
+}
+
+func TestRunDeliversAndReturnsPromptlyOnCancel(t *testing.T) {
+	var fail atomic.Bool
+	var calls atomic.Int32
+	h := fakeHub(&fail, &calls)
+	events := make(chan Event, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runOnHub(ctx, h, func(e Event) { events <- e }) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		h.mu.RLock()
+		n := len(h.listeners)
+		h.mu.RUnlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("подписчик не появился")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	h.dispatch(rawEvent{prov: provNet, id: idUDPv4Send, pid: 3, at: testAt,
+		props: map[string]interface{}{propNetSize: "7", propNetDest: "8.8.8.8"}})
+	select {
+	case e := <-events:
+		if e.Bytes != 7 || e.PID != 3 {
+			t.Fatalf("событие: %+v", e)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("событие не доставлено")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Run не вернулся после отмены")
+	}
+	h.mu.RLock()
+	n := len(h.listeners)
+	h.mu.RUnlock()
+	if n != 0 {
+		t.Fatalf("подписчик не снят: %d", n)
+	}
+}
+
+func TestDispatchSurvivesPanickingListener(t *testing.T) {
+	h := newHub(func(func(rawEvent)) error { return nil })
+	var delivered int
+	h.subscribe(func(rawEvent) { panic("битое событие") })
+	h.subscribe(func(rawEvent) { delivered++ })
+	h.dispatch(rawEvent{prov: provDNS, id: idDNSQueryDone})
+	if delivered != 1 {
+		t.Fatalf("второй подписчик не получил событие: %d", delivered)
+	}
 }
 
 func TestIsNetworkSend(t *testing.T) {

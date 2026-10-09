@@ -8,4 +8,7 @@ require gopkg.in/yaml.v3 v3.0.1
 
 require go.etcd.io/bbolt v1.3.11
 
-require github.com/bi-zone/etw v0.0.0-20210519083747-fe9042eb0ea8
+require (
+	github.com/0xrawsec/golang-etw v1.6.2
+	github.com/0xrawsec/golang-utils v1.3.1 // indirect
+)

@@ -2,37 +2,37 @@
 
 package netupload
 
-import "golang.org/x/sys/windows"
-
-// ВНИМАНИЕ: НЕ ПОДТВЕРЖДЕНО. Номера событий и имена свойств ниже взяты по памяти
-// из манифестов провайдеров и НЕ сверены с реальной системой. До запуска
-// agent/cmd/etwprobe от администратора на настоящей машине они считаются
-// непроверенными. Что необходимо сверить по выводу пробника:
+// ВНИМАНИЕ: свойства событий НЕ ПОДТВЕРЖДЕНЫ на живой системе.
 //
-//  1. Kernel-File: номер события создания (idFileCreate), чтения (idFileRead),
-//     закрытия (idFileClose); имена свойств FileObject и FileName; что путь
-//     приходит в NT-форме (\Device\HarddiskVolumeN\...); что FileObject — число
-//     (строка "0x..." или десятичная), одинаковое в создании/чтении/закрытии.
-//  2. Kernel-Network: номера событий отправки TCP IPv4/IPv6 и UDP IPv4/IPv6
-//     (idTCPv4Send, idTCPv6Send, idUDPv4Send, idUDPv6Send); имена свойств PID,
-//     size, daddr; формат daddr (строка с адресом, "ip:порт" или число — для
-//     числа нужна ветка uint32/порядок байт в asAddr).
-//  3. DNS-Client: номер завершённого запроса (idDNSQueryDone), имена свойств
-//     QueryName и QueryResults, формат QueryResults ("type:  5 host;1.2.3.4;").
-//  4. Что события приходят с заданными ключевыми словами Kernel-File
-//     (keywordsKernelFile) и что чтения файлов попадают в выборку.
+// Подтверждено манифестами провайдеров (wevtutil gp <провайдер> /ge /gm):
+//   - Kernel-File: ключевые слова 0x10 FILENAME, 0x20 FILEIO, 0x80 CREATE,
+//     0x100 READ; события 12 Create (0xA0), 14 Close (0x20), 15 Read (0x120);
+//   - Kernel-Network: 10/26/42/58 — отправка TCPv4/TCPv6/UDPv4/UDPv6;
+//   - DNS-Client: 3008 — завершённый запрос.
 //
-// При расхождении правится только этот файл (и, если изменилось имя свойства,
-// константы prop* ниже).
-var (
-	guidKernelFile    = mustGUID("{EDD08927-9CC4-4E65-B970-C2560FB5C289}") // Microsoft-Windows-Kernel-File
-	guidKernelNetwork = mustGUID("{7DD42A49-5329-4832-8DFD-43D979153A88}") // Microsoft-Windows-Kernel-Network
-	guidDNSClient     = mustGUID("{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}") // Microsoft-Windows-DNS-Client
+// Имена FileName/FileObject для Create встречаются в тестах библиотеки etw.
+//
+// НЕ проверено до запуска agent/cmd/etwprobe от администратора на настоящей
+// машине (сверить по выводу пробника):
+//  1. имена свойств: FileObject (Create/Read/Close), FileName, PID, size, daddr,
+//     QueryName, QueryResults;
+//  2. FileObject — одно и то же значение в Create, Read и Close одного файла;
+//  3. путь в Create приходит в NT-форме (\Device\HarddiskVolumeN\...);
+//  4. формат daddr (строка адреса, "ip:порт" или число) и size (десятичное число);
+//  5. формат QueryResults ("type:  5 host;1.2.3.4;");
+//  6. что события чтения действительно приходят с выбранной маской ключевых слов.
+//
+// При расхождении правится только этот файл (и asAddr/asUint в props.go,
+// если формат значений другой).
+const (
+	guidKernelFile    = "{EDD08927-9CC4-4E65-B970-C2560FB5C289}" // Microsoft-Windows-Kernel-File
+	guidKernelNetwork = "{7DD42A49-5329-4832-8DFD-43D979153A88}" // Microsoft-Windows-Kernel-Network
+	guidDNSClient     = "{1C95126E-7EEA-49A9-A3FE-A378B03DDB4D}" // Microsoft-Windows-DNS-Client
 )
 
 const (
-	// Kernel-File: ключевые слова FILENAME | READ | CREATE.
-	keywordsKernelFile uint64 = 0x10 | 0x20 | 0x80
+	// Kernel-File: FILEIO | CREATE | READ.
+	keywordsKernelFile uint64 = 0x20 | 0x80 | 0x100
 
 	idFileCreate uint16 = 12
 	idFileRead   uint16 = 15
@@ -58,11 +58,3 @@ const (
 	propDNSName    = "QueryName"
 	propDNSResults = "QueryResults"
 )
-
-func mustGUID(text string) windows.GUID {
-	guid, err := windows.GUIDFromString(text)
-	if err != nil {
-		panic(err)
-	}
-	return guid
-}
