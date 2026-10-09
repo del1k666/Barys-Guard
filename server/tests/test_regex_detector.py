@@ -68,6 +68,33 @@ def test_overlong_run_is_not_counted_by_its_suffix_at_any_chunking(size: int) ->
     assert scanner.finish()["c"].count == 0
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["123456" * 10, "1234567890" * 6, "12 " * 20 + "123456789" * 3],
+)
+def test_adjacent_matches_are_not_swallowed_at_any_chunking(text: str) -> None:
+    def count(size: int) -> int:
+        scanner = ContentScanner([RegexDetector("c", r"\d{3}", max_match=5)])
+        for start in range(0, len(text), size):
+            scanner.feed(text[start : start + size])
+        return scanner.finish()["c"].count
+
+    whole = _scan(text, RegexDetector("c", r"\d{3}", max_match=5))["c"].count
+    assert whole > 0
+    assert [count(size) for size in range(1, 70)] == [whole] * 69
+
+
+@pytest.mark.parametrize("pattern", [r"x{5,}", r"x{2,}", r"x+", r"a|ab", r"ab|b", r"\d+"])
+def test_chunk_sweep_is_invariant_for_overlong_and_short_runs(pattern: str) -> None:
+    text = "a ab x" + "x" * 25 + " 12 " + "1" * 30 + " ab abab xxxxxx b " + "x" * 13 + "ab" * 9
+    whole = _scan(text, RegexDetector("c", pattern, max_match=10))["c"].count
+    for size in range(1, 70):
+        scanner = ContentScanner([RegexDetector("c", pattern, max_match=10)])
+        for start in range(0, len(text), size):
+            scanner.feed(text[start : start + size])
+        assert scanner.finish()["c"].count == whole, (pattern, size)
+
+
 @pytest.mark.parametrize("pattern", [r"(?=a)b", r"(?<=a)b", r"(a)\1", "(", "[a-"])
 def test_unsupported_or_broken_patterns_raise_pattern_error(pattern: str) -> None:
     with pytest.raises(PatternError) as caught:

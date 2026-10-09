@@ -9,7 +9,7 @@ import re
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Protocol
+from typing import Protocol, cast
 
 MAX_SAMPLES = 5
 
@@ -107,6 +107,12 @@ class Detector(Protocol):
         длинное совпадение): сканер продолжит поиск за его концом и не посчитает остаток.
         """
         ...
+
+
+class SkipsRest(Protocol):
+    """Детектор, который поглощает без засчёта (пустой образец) и умеет пропустить остаток."""
+
+    def skip_rest(self, data: str, pos: int) -> int: ...
 
 
 class IinBinDetector:
@@ -216,6 +222,9 @@ class ContentScanner:
         # Позиция в хвосте, с которой каждый детектор продолжает поиск
         # (конец его прошлого совпадения, если оно зашло в хвост).
         self._resume = [0] * len(self._detectors)
+        # Прошлый участок детектора был поглощён до конца данных и мог продолжиться
+        # в следующей порции (длинное совпадение без засчёта).
+        self._open = [False] * len(self._detectors)
         self._findings = {d.key: Finding() for d in self._detectors}
 
     def feed(self, chunk: str) -> None:
@@ -240,8 +249,13 @@ class ContentScanner:
     def _scan(self, index: int, detector: Detector, data: str, end: int) -> int:
         """Считает совпадения детектора, начавшиеся до `end`; возвращает позицию продолжения."""
         consumed = self._resume[index]
+        if self._open[index]:
+            skipper = cast(SkipsRest, detector)
+            consumed = skipper.skip_rest(data, consumed)
+        self._open[index] = self._open[index] and consumed >= len(data)
         for sample, match_end in detector.find(data, max(self._context, consumed), end):
             if sample:
                 self._findings[detector.key].add(sample)
+            self._open[index] = not sample and match_end >= len(data)
             consumed = match_end
         return consumed

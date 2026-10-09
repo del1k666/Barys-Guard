@@ -40,15 +40,18 @@ class RegexDetector:
         self._max_match = max_match
         self._pattern = compile_pattern(pattern, ignore_case)
 
+    def skip_rest(self, data: str, pos: int) -> int:
+        """Конец продолжения поглощённого длинного совпадения, оборванного на `pos`.
+
+        Вызывается сканером только если прошлый участок кончился ровно на конце данных
+        (символ перед `pos` принадлежит длинному совпадению); иначе возвращает `pos`.
+        """
+        if pos <= 0:
+            return pos
+        earlier = self._pattern.match(data, pos - 1)
+        return earlier.end() if earlier is not None and earlier.end() > pos else pos
+
     def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
-        # Поиск мог начаться внутри уже поглощённого участка (длинное совпадение,
-        # оборванное срезом порции): совпадение, заходящее на `start` с предыдущего
-        # символа, — продолжение прошлого, его остаток не засчитывается.
-        if start > 0:
-            earlier = self._pattern.match(data, start - 1)
-            if earlier is not None and earlier.end() > start:
-                yield "", earlier.end()
-                start = earlier.end()
         for match in self._pattern.finditer(data, start):
             if match.start() >= end:
                 return
