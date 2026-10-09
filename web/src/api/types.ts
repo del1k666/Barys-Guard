@@ -52,3 +52,12 @@ export type IncidentStatusUpdate = Schemas["IncidentStatusUpdate"];
 export type VerdictSummary = Schemas["VerdictSummary"];
 
 export type AgentStatus = "pending" | "active" | "offline" | "quarantined" | "revoked";
+
+export type RuleSummary = Schemas["RuleSummary"];
+export type RuleCreateRequest = Schemas["RuleCreateRequest"];
+export type RuleUpdateRequest = Schemas["RuleUpdateRequest"];
+export type TermItem = Schemas["TermItem"];
+export type TermPage = Schemas["TermPage"];
+export type RuleVersionItem = Schemas["RuleVersionItem"];
+export type RuleTestRequest = Schemas["RuleTestRequest"];
+export type RuleTestResponse = Schemas["RuleTestResponse"];

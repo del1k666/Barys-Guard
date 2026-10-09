@@ -362,3 +362,84 @@ class IncidentDetail(IncidentSummary):
 
 class IncidentStatusUpdate(BaseModel):
     status: Literal["acknowledged", "closed"]
+
+
+class RuleSummary(BaseModel):
+    id: uuid.UUID
+    key: str
+    kind: str
+    title: str
+    builtin: bool
+    enabled: bool
+    version: int
+    weight: int
+    cap: int
+    pattern: str | None = None
+    ignore_case: bool = False
+    terms_count: int | None = None
+    updated_at: datetime
+
+
+class RuleCreateRequest(BaseModel):
+    kind: Literal["dictionary", "regex"]
+    title: str
+    weight: int
+    cap: int
+    pattern: str | None = None
+    ignore_case: bool = False
+    test_text: str | None = None
+    terms: list[str] | None = None
+
+
+class RuleUpdateRequest(BaseModel):
+    title: str | None = None
+    enabled: bool | None = None
+    weight: int | None = None
+    cap: int | None = None
+    pattern: str | None = None
+    ignore_case: bool | None = None
+    test_text: str | None = None
+
+
+class TermsAddRequest(BaseModel):
+    terms: list[str]
+
+
+class TermsAddResponse(BaseModel):
+    added: int
+
+
+class TermItem(BaseModel):
+    id: uuid.UUID
+    term: str
+
+
+class TermPage(BaseModel):
+    items: list[TermItem]
+    total: int
+
+
+class RuleVersionItem(BaseModel):
+    version: int
+    params: dict[str, Any]
+    created_at: datetime
+
+
+class RuleTestRequest(BaseModel):
+    kind: Literal["dictionary", "regex"]
+    pattern: str | None = None
+    ignore_case: bool = False
+    terms: list[str] | None = None
+    text: str
+
+
+class RuleMatchSpan(BaseModel):
+    start: int
+    end: int
+
+
+class RuleTestResponse(BaseModel):
+    ok: bool
+    error: str | None = None
+    count: int
+    matches: list[RuleMatchSpan]

@@ -784,6 +784,114 @@ export interface paths {
         patch: operations["update_incident_api_v1_incidents__incident_id__patch"];
         trace?: never;
     };
+    "/api/v1/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Rules */
+        get: operations["list_rules_api_v1_rules_get"];
+        put?: never;
+        /** Create Rule */
+        post: operations["create_rule_api_v1_rules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Rule Test
+         * @description Проверка на тексте оператора; текст не сохраняется и в логи не попадает.
+         */
+        post: operations["run_rule_test_api_v1_rules_test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/{rule_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Rule */
+        get: operations["read_rule_api_v1_rules__rule_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Rule */
+        patch: operations["update_rule_api_v1_rules__rule_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/rules/{rule_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rule Versions */
+        get: operations["rule_versions_api_v1_rules__rule_id__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/{rule_id}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rule Terms */
+        get: operations["rule_terms_api_v1_rules__rule_id__terms_get"];
+        put?: never;
+        /** Add Rule Terms */
+        post: operations["add_rule_terms_api_v1_rules__rule_id__terms_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/rules/{rule_id}/terms/{term_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Rule Term */
+        delete: operations["delete_rule_term_api_v1_rules__rule_id__terms__term_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1827,6 +1935,137 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /** RuleCreateRequest */
+        RuleCreateRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "dictionary" | "regex";
+            /** Title */
+            title: string;
+            /** Weight */
+            weight: number;
+            /** Cap */
+            cap: number;
+            /** Pattern */
+            pattern?: string | null;
+            /**
+             * Ignore Case
+             * @default false
+             */
+            ignore_case: boolean;
+            /** Test Text */
+            test_text?: string | null;
+            /** Terms */
+            terms?: string[] | null;
+        };
+        /** RuleMatchSpan */
+        RuleMatchSpan: {
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+        };
+        /** RuleSummary */
+        RuleSummary: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Builtin */
+            builtin: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Version */
+            version: number;
+            /** Weight */
+            weight: number;
+            /** Cap */
+            cap: number;
+            /** Pattern */
+            pattern?: string | null;
+            /**
+             * Ignore Case
+             * @default false
+             */
+            ignore_case: boolean;
+            /** Terms Count */
+            terms_count?: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** RuleTestRequest */
+        RuleTestRequest: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "dictionary" | "regex";
+            /** Pattern */
+            pattern?: string | null;
+            /**
+             * Ignore Case
+             * @default false
+             */
+            ignore_case: boolean;
+            /** Terms */
+            terms?: string[] | null;
+            /** Text */
+            text: string;
+        };
+        /** RuleTestResponse */
+        RuleTestResponse: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+            /** Count */
+            count: number;
+            /** Matches */
+            matches: components["schemas"]["RuleMatchSpan"][];
+        };
+        /** RuleUpdateRequest */
+        RuleUpdateRequest: {
+            /** Title */
+            title?: string | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Weight */
+            weight?: number | null;
+            /** Cap */
+            cap?: number | null;
+            /** Pattern */
+            pattern?: string | null;
+            /** Ignore Case */
+            ignore_case?: boolean | null;
+            /** Test Text */
+            test_text?: string | null;
+        };
+        /** RuleVersionItem */
+        RuleVersionItem: {
+            /** Version */
+            version: number;
+            /** Params */
+            params: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SessionSummary */
         SessionSummary: {
             /**
@@ -1871,6 +2110,33 @@ export interface components {
             scope_group_id: string | null;
             /** Must Change Password */
             must_change_password: boolean;
+        };
+        /** TermItem */
+        TermItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Term */
+            term: string;
+        };
+        /** TermPage */
+        TermPage: {
+            /** Items */
+            items: components["schemas"]["TermItem"][];
+            /** Total */
+            total: number;
+        };
+        /** TermsAddRequest */
+        TermsAddRequest: {
+            /** Terms */
+            terms: string[];
+        };
+        /** TermsAddResponse */
+        TermsAddResponse: {
+            /** Added */
+            added: number;
         };
         /** TransportConfig */
         TransportConfig: {
@@ -3587,6 +3853,289 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IncidentDetail"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rules_api_v1_rules_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleSummary"][];
+                };
+            };
+        };
+    };
+    create_rule_api_v1_rules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_rule_test_api_v1_rules_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleTestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_rule_api_v1_rules__rule_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_rule_api_v1_rules__rule_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rule_versions_api_v1_rules__rule_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleVersionItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rule_terms_api_v1_rules__rule_id__terms_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TermPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_rule_terms_api_v1_rules__rule_id__terms_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TermsAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TermsAddResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_rule_term_api_v1_rules__rule_id__terms__term_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+                term_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

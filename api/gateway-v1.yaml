@@ -1481,6 +1481,276 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules:
+    get:
+      tags:
+      - rules
+      summary: List Rules
+      operationId: list_rules_api_v1_rules_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/RuleSummary'
+                type: array
+                title: Response List Rules Api V1 Rules Get
+    post:
+      tags:
+      - rules
+      summary: Create Rule
+      operationId: create_rule_api_v1_rules_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreateRequest'
+        required: true
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules/test:
+    post:
+      tags:
+      - rules
+      summary: Run Rule Test
+      description: Проверка на тексте оператора; текст не сохраняется и в логи не
+        попадает.
+      operationId: run_rule_test_api_v1_rules_test_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleTestRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleTestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules/{rule_id}:
+    get:
+      tags:
+      - rules
+      summary: Read Rule
+      operationId: read_rule_api_v1_rules__rule_id__get
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - rules
+      summary: Update Rule
+      operationId: update_rule_api_v1_rules__rule_id__patch
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleUpdateRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSummary'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules/{rule_id}/versions:
+    get:
+      tags:
+      - rules
+      summary: Rule Versions
+      operationId: rule_versions_api_v1_rules__rule_id__versions_get
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RuleVersionItem'
+                title: Response Rule Versions Api V1 Rules  Rule Id  Versions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules/{rule_id}/terms:
+    get:
+      tags:
+      - rules
+      summary: Rule Terms
+      operationId: rule_terms_api_v1_rules__rule_id__terms_get
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 500
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TermPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    post:
+      tags:
+      - rules
+      summary: Add Rule Terms
+      operationId: add_rule_terms_api_v1_rules__rule_id__terms_post
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TermsAddRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TermsAddResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/rules/{rule_id}/terms/{term_id}:
+    delete:
+      tags:
+      - rules
+      summary: Delete Rule Term
+      operationId: delete_rule_term_api_v1_rules__rule_id__terms__term_id__delete
+      parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Rule Id
+      - name: term_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Term Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AgentConfigDocument:
@@ -3174,6 +3444,239 @@ components:
       required:
       - reason
       title: RevokeAgentRequest
+    RuleCreateRequest:
+      properties:
+        kind:
+          type: string
+          enum:
+          - dictionary
+          - regex
+          title: Kind
+        title:
+          type: string
+          title: Title
+        weight:
+          type: integer
+          title: Weight
+        cap:
+          type: integer
+          title: Cap
+        pattern:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pattern
+        ignore_case:
+          type: boolean
+          title: Ignore Case
+          default: false
+        test_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Test Text
+        terms:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Terms
+      type: object
+      required:
+      - kind
+      - title
+      - weight
+      - cap
+      title: RuleCreateRequest
+    RuleMatchSpan:
+      properties:
+        start:
+          type: integer
+          title: Start
+        end:
+          type: integer
+          title: End
+      type: object
+      required:
+      - start
+      - end
+      title: RuleMatchSpan
+    RuleSummary:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        key:
+          type: string
+          title: Key
+        kind:
+          type: string
+          title: Kind
+        title:
+          type: string
+          title: Title
+        builtin:
+          type: boolean
+          title: Builtin
+        enabled:
+          type: boolean
+          title: Enabled
+        version:
+          type: integer
+          title: Version
+        weight:
+          type: integer
+          title: Weight
+        cap:
+          type: integer
+          title: Cap
+        pattern:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pattern
+        ignore_case:
+          type: boolean
+          title: Ignore Case
+          default: false
+        terms_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Terms Count
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - id
+      - key
+      - kind
+      - title
+      - builtin
+      - enabled
+      - version
+      - weight
+      - cap
+      - updated_at
+      title: RuleSummary
+    RuleTestRequest:
+      properties:
+        kind:
+          type: string
+          enum:
+          - dictionary
+          - regex
+          title: Kind
+        pattern:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pattern
+        ignore_case:
+          type: boolean
+          title: Ignore Case
+          default: false
+        terms:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Terms
+        text:
+          type: string
+          title: Text
+      type: object
+      required:
+      - kind
+      - text
+      title: RuleTestRequest
+    RuleTestResponse:
+      properties:
+        ok:
+          type: boolean
+          title: Ok
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        count:
+          type: integer
+          title: Count
+        matches:
+          items:
+            $ref: '#/components/schemas/RuleMatchSpan'
+          type: array
+          title: Matches
+      type: object
+      required:
+      - ok
+      - count
+      - matches
+      title: RuleTestResponse
+    RuleUpdateRequest:
+      properties:
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Title
+        enabled:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Enabled
+        weight:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Weight
+        cap:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Cap
+        pattern:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Pattern
+        ignore_case:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Ignore Case
+        test_text:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Test Text
+      type: object
+      title: RuleUpdateRequest
+    RuleVersionItem:
+      properties:
+        version:
+          type: integer
+          title: Version
+        params:
+          additionalProperties: true
+          type: object
+          title: Params
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+      type: object
+      required:
+      - version
+      - params
+      - created_at
+      title: RuleVersionItem
     SessionSummary:
       properties:
         id:
@@ -3244,6 +3747,55 @@ components:
       - scope_group_id
       - must_change_password
       title: SessionUser
+    TermItem:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        term:
+          type: string
+          title: Term
+      type: object
+      required:
+      - id
+      - term
+      title: TermItem
+    TermPage:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/TermItem'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - items
+      - total
+      title: TermPage
+    TermsAddRequest:
+      properties:
+        terms:
+          items:
+            type: string
+          type: array
+          title: Terms
+      type: object
+      required:
+      - terms
+      title: TermsAddRequest
+    TermsAddResponse:
+      properties:
+        added:
+          type: integer
+          title: Added
+      type: object
+      required:
+      - added
+      title: TermsAddResponse
     TransportConfig:
       properties:
         heartbeat_interval_seconds:

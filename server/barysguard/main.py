@@ -109,6 +109,7 @@ def create_app() -> FastAPI:
     from barysguard.api.incidents import router as incidents_router
     from barysguard.api.overview import router as overview_router
     from barysguard.api.router import router as api_router
+    from barysguard.api.rules import router as rules_router
     from barysguard.api.users import router as users_router
     from barysguard.gateway.router import router as gateway_router
 
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(overview_router)
     app.include_router(events_router)
     app.include_router(incidents_router)
+    app.include_router(rules_router)
 
     from barysguard.gateway.event_schemas import EventEnvelope
 
