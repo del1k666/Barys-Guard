@@ -108,7 +108,7 @@ function Detail({ incident }: { incident: IncidentDetail }) {
           <tbody>
             {incident.matches.map((match) => (
               <tr key={match.rule_key}>
-                <td>{ru.incidents.rules[match.rule_key] ?? match.rule_key}</td>
+                <td>{ru.incidents.rules[match.rule_key] ?? (match.rule_title || match.rule_key)}</td>
                 <td>{match.count}</td>
                 <td>{match.points}</td>
                 <td className={styles.mono}>{match.samples.join(", ")}</td>

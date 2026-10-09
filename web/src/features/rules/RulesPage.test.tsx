@@ -110,5 +110,6 @@ describe("RulesPage", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Как создавать правила" }));
 
     expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Вес, потолок и оценка" })).toBeInTheDocument();
   });
 });

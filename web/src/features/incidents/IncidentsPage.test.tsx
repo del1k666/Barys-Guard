@@ -35,7 +35,8 @@ const DETAIL = {
   matches: [
     { rule_key: "iin_bin", count: 2, points: 60, samples: ["**********17", "**********42"] },
     { rule_key: "card", count: 1, points: 20, samples: ["************1111"] },
-    { rule_key: "custom_rule", count: 1, points: 5, samples: [] },
+    { rule_key: "custom_rule", rule_title: "", count: 1, points: 5, samples: [] },
+    { rule_key: "custom_aa11bb22", rule_title: "Номер договора", count: 1, points: 15, samples: ["*****67"] },
   ],
   events: [
     {
@@ -190,6 +191,8 @@ describe("IncidentDetailPanel", () => {
     expect(within(dialog).getByText("ИИН/БИН")).toBeInTheDocument();
     expect(within(dialog).getByText("Банковская карта")).toBeInTheDocument();
     expect(within(dialog).getByText("custom_rule")).toBeInTheDocument();
+    expect(within(dialog).getByText("Номер договора")).toBeInTheDocument();
+    expect(within(dialog).queryByText("custom_aa11bb22")).not.toBeInTheDocument();
     expect(within(dialog).getByText("**********17, **********42")).toBeInTheDocument();
     expect(within(dialog).getByText("************1111")).toBeInTheDocument();
     expect(within(dialog).getByText("copy")).toBeInTheDocument();
