@@ -17,18 +17,20 @@ type pidReads struct {
 	last  time.Time
 }
 
-// Reads хранит для каждого процесса короткое окно последних прочитанных
-// документов. Память ограничена числом процессов и записей на процесс.
+// Reads хранит для каждого процесса последние прочитанные документы.
+// Хранение (retention) отделено от запроса: старше retention записи
+// выбрасываются при добавлении новых, а Recent отдаёт всё, что не старше
+// заданного момента. Память ограничена числом процессов и записей на процесс.
 type Reads struct {
 	mu        sync.Mutex
-	window    time.Duration
+	retention time.Duration
 	maxPIDs   int
 	maxPerPID int
 	byPID     map[uint32]*pidReads
 }
 
-func NewReads(window time.Duration, maxPIDs, maxPerPID int) *Reads {
-	return &Reads{window: window, maxPIDs: maxPIDs, maxPerPID: maxPerPID, byPID: map[uint32]*pidReads{}}
+func NewReads(retention time.Duration, maxPIDs, maxPerPID int) *Reads {
+	return &Reads{retention: retention, maxPIDs: maxPIDs, maxPerPID: maxPerPID, byPID: map[uint32]*pidReads{}}
 }
 
 func (r *Reads) Add(pid uint32, read Read) {
@@ -43,6 +45,14 @@ func (r *Reads) Add(pid uint32, read Read) {
 		r.byPID[pid] = entry
 	}
 	entry.last = read.At
+	cutoff := read.At.Add(-r.retention)
+	kept := entry.items[:0]
+	for _, item := range entry.items {
+		if !item.At.Before(cutoff) {
+			kept = append(kept, item)
+		}
+	}
+	entry.items = kept
 	for index := range entry.items {
 		if entry.items[index].Path == read.Path {
 			entry.items[index] = read
@@ -69,22 +79,21 @@ func (r *Reads) evictOldestLocked() {
 	}
 }
 
-// Recent отдаёт чтения процесса не старше окна.
-func (r *Reads) Recent(pid uint32, now time.Time) []Read {
+// Recent отдаёт чтения процесса, случившиеся не раньше since.
+func (r *Reads) Recent(pid uint32, since time.Time) []Read {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry := r.byPID[pid]
 	if entry == nil {
 		return nil
 	}
-	fresh := entry.items[:0]
+	var out []Read
 	for _, read := range entry.items {
-		if now.Sub(read.At) <= r.window {
-			fresh = append(fresh, read)
+		if !read.At.Before(since) {
+			out = append(out, read)
 		}
 	}
-	entry.items = fresh
-	return append([]Read(nil), fresh...)
+	return out
 }
 
 func (r *Reads) Processes() int {

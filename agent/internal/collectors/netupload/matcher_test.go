@@ -11,7 +11,7 @@ var t0 = time.Unix(10_000, 0)
 func newTestMatcher(t *testing.T) (*Matcher, *Reads, *Resolver) {
 	t.Helper()
 	cfg := DefaultConfig()
-	reads := NewReads(cfg.Window, 100, 100)
+	reads := NewReads(10*time.Minute, 100, 100)
 	res := &Resolver{Catalog: NewCatalog(DefaultServices()), DNS: NewDNSCache(100)}
 	res.DNS.Learn([]string{"content.dropboxapi.com"}, []netip.Addr{addr("162.125.1.14")}, time.Hour, t0)
 	return NewMatcher(cfg, reads, res), reads, res
@@ -111,11 +111,71 @@ func TestSeveralFilesShareTheSentBudget(t *testing.T) {
 func TestInvalidToleranceDoesNotPanic(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.TolerancePercent = 200
-	reads := NewReads(cfg.Window, 10, 10)
+	reads := NewReads(10*time.Minute, 10, 10)
 	res := &Resolver{Catalog: NewCatalog(DefaultServices()), DNS: NewDNSCache(10)}
 	res.DNS.Learn([]string{"dropbox.com"}, []netip.Addr{addr("1.2.3.4")}, time.Hour, t0)
 	m := NewMatcher(cfg, reads, res)
 	reads.Add(1, Read{Path: `C:\a.pdf`, Size: 100, At: t0})
 
 	m.Observe(send(1, "1.2.3.4", 1_000, t0))
+}
+
+func TestBigSlowUploadIsReportedOnceAt80Percent(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	reads.Add(5, Read{Path: `C:big.bin`, Size: 100_000_000, At: t0})
+
+	var matchedAt []int
+	var got []Match
+	for i := 0; i < 100; i++ {
+		found := m.Observe(send(5, "162.125.1.14", 1_000_000, t0.Add(time.Duration(i)*time.Second)))
+		if len(found) > 0 {
+			matchedAt = append(matchedAt, i+1)
+			got = append(got, found...)
+		}
+	}
+	if len(matchedAt) != 1 || matchedAt[0] != 80 {
+		t.Fatalf("ждали одно совпадение на 80-м отправлении: %v", matchedAt)
+	}
+	if got[0].Confidence != ConfidenceMedium || got[0].Sent != 80_000_000 {
+		t.Fatalf("%+v", got[0])
+	}
+}
+
+func TestContinuousUploadNeverReportsTwice(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	window := DefaultConfig().Window
+	reads.Add(5, Read{Path: `C:\plan.pdf`, Size: 1_000_000, At: t0})
+
+	total := 0
+	for i := 0; i < int((4*window)/time.Second); i++ {
+		total += len(m.Observe(send(5, "162.125.1.14", 100_000, t0.Add(time.Duration(i)*time.Second))))
+	}
+	if total != 1 {
+		t.Fatalf("длинная загрузка дала %d событий, ждали 1", total)
+	}
+}
+
+func TestSameFileAfterIdleGapIsReportedAgain(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	window := DefaultConfig().Window
+	reads.Add(5, Read{Path: `C:\plan.pdf`, Size: 10_000, At: t0})
+	if got := m.Observe(send(5, "162.125.1.14", 10_000, t0)); len(got) != 1 {
+		t.Fatalf("первая загрузка: %v", got)
+	}
+
+	again := t0.Add(2 * window)
+	reads.Add(5, Read{Path: `C:\plan.pdf`, Size: 10_000, At: again})
+	if got := m.Observe(send(5, "162.125.1.14", 10_000, again)); len(got) != 1 {
+		t.Fatalf("повторная загрузка после простоя: %v", got)
+	}
+}
+
+func TestReadOlderThanWindowBeforeFirstSendDoesNotMatch(t *testing.T) {
+	m, reads, _ := newTestMatcher(t)
+	window := DefaultConfig().Window
+	reads.Add(5, Read{Path: `C:\plan.pdf`, Size: 1_000, At: t0})
+
+	if got := m.Observe(send(5, "162.125.1.14", 5_000, t0.Add(window+time.Second))); len(got) != 0 {
+		t.Fatalf("чтение раньше окна до начала передачи: %v", got)
+	}
 }

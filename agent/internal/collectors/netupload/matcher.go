@@ -37,28 +37,29 @@ type accKey struct {
 	service string
 }
 
-type reportedKey struct {
-	pid           uint32
-	path, service string
-}
-
+// accumulator — одна непрерывная передача процесса на сервис. Он живёт, пока
+// передача не простаивает дольше окна; вместе с ним живёт и список уже
+// засчитанных файлов.
 type accumulator struct {
-	start time.Time
-	sent  uint64
-	used  uint64
+	start    time.Time
+	last     time.Time
+	sent     uint64
+	used     uint64
+	reported map[string]struct{}
 }
 
 // Matcher решает, что процесс отправил именно прочитанный им документ.
 // Объём отправки копится по паре «процесс — сервис» и расходуется на файлы по
-// убыванию размера; каждый файл засчитывается один раз за окно.
+// убыванию размера; каждый файл засчитывается один раз за непрерывную передачу.
+// Окно — это и допустимая давность чтения до начала передачи, и допустимый
+// простой внутри одной передачи.
 type Matcher struct {
 	cfg   Config
 	reads *Reads
 	res   *Resolver
 
-	mu       sync.Mutex
-	acc      map[accKey]*accumulator
-	reported map[reportedKey]time.Time
+	mu  sync.Mutex
+	acc map[accKey]*accumulator
 }
 
 func NewMatcher(cfg Config, reads *Reads, res *Resolver) *Matcher {
@@ -67,7 +68,7 @@ func NewMatcher(cfg Config, reads *Reads, res *Resolver) *Matcher {
 	}
 	return &Matcher{
 		cfg: cfg, reads: reads, res: res,
-		acc: map[accKey]*accumulator{}, reported: map[reportedKey]time.Time{},
+		acc: map[accKey]*accumulator{},
 	}
 }
 
@@ -86,13 +87,16 @@ func (m *Matcher) Observe(send Send) []Match {
 
 	key := accKey{pid: send.PID, service: service.Key}
 	acc := m.acc[key]
-	if acc == nil || send.At.Sub(acc.start) > m.cfg.Window {
-		acc = &accumulator{start: send.At}
+	if acc == nil || send.At.Sub(acc.last) > m.cfg.Window {
+		acc = &accumulator{start: send.At, reported: map[string]struct{}{}}
 		m.acc[key] = acc
+	}
+	if send.At.After(acc.last) {
+		acc.last = send.At
 	}
 	acc.sent += send.Bytes
 
-	candidates := m.reads.Recent(send.PID, send.At)
+	candidates := m.reads.Recent(send.PID, acc.start.Add(-m.cfg.Window))
 	sort.Slice(candidates, func(i, j int) bool {
 		if candidates[i].Size != candidates[j].Size {
 			return candidates[i].Size > candidates[j].Size
@@ -102,8 +106,7 @@ func (m *Matcher) Observe(send Send) []Match {
 
 	var out []Match
 	for _, read := range candidates {
-		seenKey := reportedKey{pid: send.PID, path: read.Path, service: service.Key}
-		if at, seen := m.reported[seenKey]; seen && send.At.Sub(at) <= m.cfg.Window {
+		if _, seen := acc.reported[read.Path]; seen {
 			continue
 		}
 		size := uint64(read.Size)
@@ -121,7 +124,7 @@ func (m *Matcher) Observe(send Send) []Match {
 			spent = remaining
 		}
 		acc.used += spent
-		m.reported[seenKey] = send.At
+		acc.reported[read.Path] = struct{}{}
 		out = append(out, Match{
 			PID: send.PID, Read: read, Service: service, Host: host,
 			Sent: acc.sent, Confidence: confidence,
@@ -134,15 +137,8 @@ func (m *Matcher) Observe(send Send) []Match {
 func (m *Matcher) pruneLocked(now time.Time) {
 	if len(m.acc) > pruneAbove {
 		for key, acc := range m.acc {
-			if now.Sub(acc.start) > 2*m.cfg.Window {
+			if now.Sub(acc.last) > 2*m.cfg.Window {
 				delete(m.acc, key)
-			}
-		}
-	}
-	if len(m.reported) > pruneAbove {
-		for key, at := range m.reported {
-			if now.Sub(at) > 2*m.cfg.Window {
-				delete(m.reported, key)
 			}
 		}
 	}
