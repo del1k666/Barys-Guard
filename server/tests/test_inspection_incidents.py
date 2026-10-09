@@ -196,3 +196,7 @@ def test_title_falls_back_to_the_key_without_a_title() -> None:
         build_title("copy", [{"rule_key": "custom_zz", "count": 1}])
         == "Копирование на USB: custom_zz ×1"
     )
+
+
+def test_upload_title() -> None:
+    assert build_title("upload", MATCHES) == "Отправка файла в сеть: ИИН/БИН ×3, гриф ×1"

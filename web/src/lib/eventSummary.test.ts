@@ -49,3 +49,23 @@ describe("describeEvent", () => {
     expect(describeEvent({ channel: "print", action: "job", subject: { pages: 3 } })).toBe("—");
   });
 });
+
+describe("describeEvent: network upload", () => {
+  it("shows the file and the service", () => {
+    expect(
+      describeEvent({
+        channel: "network",
+        action: "upload",
+        subject: { src_path: "C:\Docs\plan.pdf", service_name: "Google Drive", service: "gdrive" },
+      }),
+    ).toBe("C:\Docs\plan.pdf → Google Drive");
+  });
+
+  it("falls back to the service key and to the bare path", () => {
+    expect(
+      describeEvent({ channel: "network", action: "upload", subject: { src_path: "a.pdf", service: "gdrive" } }),
+    ).toBe("a.pdf → gdrive");
+    expect(describeEvent({ channel: "network", action: "upload", subject: { src_path: "a.pdf" } })).toBe("a.pdf");
+    expect(describeEvent({ channel: "network", action: "connect", subject: {} })).toBe("—");
+  });
+});

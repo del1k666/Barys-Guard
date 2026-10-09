@@ -1799,6 +1799,14 @@ components:
               stage_bytes_per_minute: 209715200
               staging_max_bytes: 524288000
               upload_bytes_per_second: 2097152
+            net_upload:
+              enabled: true
+              exclude_paths: []
+              extensions: []
+              min_file_bytes: 1024
+              services: []
+              size_tolerance_percent: 20
+              window_seconds: 60
         policies:
           additionalProperties: true
           type: object
@@ -2304,6 +2312,16 @@ components:
             staging_max_bytes: 524288000
             upload_bytes_per_second: 2097152
             stage_bytes_per_minute: 209715200
+        net_upload:
+          $ref: '#/components/schemas/NetUploadCollectorConfig'
+          default:
+            enabled: true
+            window_seconds: 60
+            size_tolerance_percent: 20
+            min_file_bytes: 1024
+            extensions: []
+            exclude_paths: []
+            services: []
       additionalProperties: false
       type: object
       title: CollectorsConfig
@@ -3333,6 +3351,81 @@ components:
       - username
       - password
       title: LoginRequest
+    NetUploadCollectorConfig:
+      properties:
+        enabled:
+          type: boolean
+          title: Enabled
+          default: true
+        window_seconds:
+          type: integer
+          maximum: 600.0
+          minimum: 5.0
+          title: Window Seconds
+          default: 60
+        size_tolerance_percent:
+          type: integer
+          maximum: 90.0
+          minimum: 0.0
+          title: Size Tolerance Percent
+          default: 20
+        min_file_bytes:
+          type: integer
+          maximum: 1073741824.0
+          minimum: 1.0
+          title: Min File Bytes
+          default: 1024
+        extensions:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Extensions
+        exclude_paths:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Exclude Paths
+        services:
+          items:
+            $ref: '#/components/schemas/NetUploadServiceConfig'
+          type: array
+          maxItems: 64
+          title: Services
+      additionalProperties: false
+      type: object
+      title: NetUploadCollectorConfig
+      description: Отправка файлов в сеть. Пустой список означает «встроенное значение
+        агента».
+    NetUploadServiceConfig:
+      properties:
+        key:
+          type: string
+          title: Key
+        name:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Name
+        domains:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Domains
+        cidrs:
+          items:
+            type: string
+          type: array
+          maxItems: 64
+          title: Cidrs
+      additionalProperties: false
+      type: object
+      required:
+      - key
+      - name
+      title: NetUploadServiceConfig
     Overview:
       properties:
         agents:

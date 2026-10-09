@@ -1,5 +1,7 @@
 import hashlib
+import ipaddress
 import json
+import re
 import uuid
 from typing import Any, Literal
 
@@ -90,12 +92,69 @@ class ArtifactCollectorConfig(BaseModel):
     )
 
 
+_SERVICE_KEY = re.compile(r"^[a-z0-9_]{1,40}$")
+
+
+class NetUploadServiceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    name: str = Field(min_length=1, max_length=80)
+    domains: list[str] = Field(default_factory=list, max_length=64)
+    cidrs: list[str] = Field(default_factory=list, max_length=64)
+
+    @field_validator("key")
+    @classmethod
+    def _key_shape(cls, value: str) -> str:
+        if not _SERVICE_KEY.match(value):
+            raise ValueError("key: латиница, цифры и _, до 40 символов")
+        return value
+
+    @field_validator("domains")
+    @classmethod
+    def _domains(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if not value or len(value) > 253:
+                raise ValueError("domain must be 1..253 characters")
+        return values
+
+    @field_validator("cidrs")
+    @classmethod
+    def _cidrs(cls, values: list[str]) -> list[str]:
+        for value in values:
+            ipaddress.ip_network(value, strict=False)
+        return values
+
+
+class NetUploadCollectorConfig(BaseModel):
+    """Отправка файлов в сеть. Пустой список означает «встроенное значение агента»."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    window_seconds: int = Field(default=60, ge=5, le=600)
+    size_tolerance_percent: int = Field(default=20, ge=0, le=90)
+    min_file_bytes: int = Field(default=1024, ge=1, le=1024 * 1024 * 1024)
+    extensions: list[str] = Field(default_factory=list, max_length=64)
+    exclude_paths: list[str] = Field(default_factory=list, max_length=64)
+    services: list[NetUploadServiceConfig] = Field(default_factory=list, max_length=64)
+
+    @field_validator("extensions", "exclude_paths")
+    @classmethod
+    def _non_empty_short_strings(cls, values: list[str]) -> list[str]:
+        for value in values:
+            if not value or len(value) > 512:
+                raise ValueError("each entry must be 1..512 characters")
+        return values
+
+
 class CollectorsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     usb: UsbCollectorConfig = UsbCollectorConfig()
     file_watch: FileWatchConfig = FileWatchConfig()
     artifact: ArtifactCollectorConfig = ArtifactCollectorConfig()
+    net_upload: NetUploadCollectorConfig = NetUploadCollectorConfig()
 
 
 class AgentConfigDocument(BaseModel):

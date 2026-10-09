@@ -22,6 +22,15 @@ export function describeEvent({ channel, action, subject }: Described): string {
     return parts.length > 0 ? parts.join(" · ") : "—";
   }
 
+  if (channel === "network") {
+    const source = text(subject.src_path);
+    if (action === "upload" && source) {
+      const service = text(subject.service_name) || text(subject.service);
+      return service ? `${source} → ${service}` : source;
+    }
+    return "—";
+  }
+
   if (channel === "agent") {
     const component = text(subject.component);
     const detail = text(subject.detail);

@@ -958,6 +958,15 @@ export interface components {
              *         "stage_bytes_per_minute": 209715200,
              *         "staging_max_bytes": 524288000,
              *         "upload_bytes_per_second": 2097152
+             *       },
+             *       "net_upload": {
+             *         "enabled": true,
+             *         "exclude_paths": [],
+             *         "extensions": [],
+             *         "min_file_bytes": 1024,
+             *         "services": [],
+             *         "size_tolerance_percent": 20,
+             *         "window_seconds": 60
              *       }
              *     }
              */
@@ -1261,6 +1270,18 @@ export interface components {
              *     }
              */
             artifact: components["schemas"]["ArtifactCollectorConfig"];
+            /**
+             * @default {
+             *       "enabled": true,
+             *       "window_seconds": 60,
+             *       "size_tolerance_percent": 20,
+             *       "min_file_bytes": 1024,
+             *       "extensions": [],
+             *       "exclude_paths": [],
+             *       "services": []
+             *     }
+             */
+            net_upload: components["schemas"]["NetUploadCollectorConfig"];
         };
         /** CommandCounts */
         CommandCounts: {
@@ -1871,6 +1892,49 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /**
+         * NetUploadCollectorConfig
+         * @description Отправка файлов в сеть. Пустой список означает «встроенное значение агента».
+         */
+        NetUploadCollectorConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Window Seconds
+             * @default 60
+             */
+            window_seconds: number;
+            /**
+             * Size Tolerance Percent
+             * @default 20
+             */
+            size_tolerance_percent: number;
+            /**
+             * Min File Bytes
+             * @default 1024
+             */
+            min_file_bytes: number;
+            /** Extensions */
+            extensions?: string[];
+            /** Exclude Paths */
+            exclude_paths?: string[];
+            /** Services */
+            services?: components["schemas"]["NetUploadServiceConfig"][];
+        };
+        /** NetUploadServiceConfig */
+        NetUploadServiceConfig: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Domains */
+            domains?: string[];
+            /** Cidrs */
+            cidrs?: string[];
         };
         /** Overview */
         Overview: {

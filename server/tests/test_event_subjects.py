@@ -83,3 +83,38 @@ def test_invalid_subject_rejects_only_that_event() -> None:
 
     assert [(r.line, r.reason) for r in parsed.rejected] == [(1, "invalid_event")]
     assert [line for line, _ in parsed.events] == [2]
+
+
+NET_SUBJECT = {"src_path": "C:\\Users\\u\\Documents\\plan.pdf", "volume": {"type": "fixed"}}
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        NET_SUBJECT,
+        {**NET_SUBJECT, "size_bytes": 10, "sent_bytes": 12, "service": "gdrive"},
+        {**NET_SUBJECT, "service_name": "Google Drive", "dest_host": "drive.google.com"},
+    ],
+)
+def test_valid_network_upload_subjects(subject: dict) -> None:
+    assert subject_is_valid(Channel.NETWORK, "upload", subject)
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        {"volume": {"type": "fixed"}},
+        {**NET_SUBJECT, "src_path": ""},
+        {**NET_SUBJECT, "volume": "fixed"},
+        {**NET_SUBJECT, "volume": {}},
+        {**NET_SUBJECT, "size_bytes": -1},
+        {**NET_SUBJECT, "sent_bytes": True},
+        {**NET_SUBJECT, "sent_bytes": "12"},
+    ],
+)
+def test_invalid_network_upload_subjects(subject: dict) -> None:
+    assert not subject_is_valid(Channel.NETWORK, "upload", subject)
+
+
+def test_other_network_actions_are_not_validated() -> None:
+    assert subject_is_valid(Channel.NETWORK, "connect", {})
