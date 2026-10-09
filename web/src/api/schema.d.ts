@@ -1674,6 +1674,11 @@ export interface components {
         IncidentMatch: {
             /** Rule Key */
             rule_key: string;
+            /**
+             * Rule Title
+             * @default
+             */
+            rule_title: string;
             /** Count */
             count: number;
             /** Points */

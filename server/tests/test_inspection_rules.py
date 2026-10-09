@@ -19,6 +19,50 @@ async def test_seed_creates_three_rules_with_first_versions(app_client, session)
     assert {v.version for v in versions} == {1}
 
 
+async def test_regex_rule_is_loaded_and_detects(app_client, session) -> None:
+    await seed_rules(session)
+    rule = Rule(key="custom_aa11bb22", kind="regex", title="Номер договора", builtin=False)
+    session.add(rule)
+    await session.flush()
+    session.add(
+        RuleVersion(
+            rule_id=rule.id,
+            version=1,
+            params={"pattern": r"№\s?\d{4}-\d{3}", "ignore_case": False, "weight": 30, "cap": 2},
+        )
+    )
+    await session.commit()
+
+    ruleset = await load_ruleset(session)
+
+    assert any(
+        w.key == "custom_aa11bb22" and w.title == "Номер договора" for w in ruleset.weights()
+    )
+    scanner = ContentScanner(ruleset.detectors())
+    scanner.feed("Договор №1234-567 подписан")
+    assert scanner.finish()["custom_aa11bb22"].count == 1
+
+
+async def test_broken_pattern_in_the_database_is_skipped_not_fatal(app_client, session) -> None:
+    await seed_rules(session)
+    rule = Rule(key="custom_bad00000", kind="regex", title="Сломанное", builtin=False)
+    session.add(rule)
+    await session.flush()
+    session.add(
+        RuleVersion(
+            rule_id=rule.id,
+            version=1,
+            params={"pattern": "(?=a)b", "ignore_case": False, "weight": 10, "cap": 1},
+        )
+    )
+    await session.commit()
+
+    ruleset = await load_ruleset(session)
+    detectors = ruleset.detectors()
+
+    assert {d.key for d in detectors} == {"iin_bin", "card", "markings"}
+
+
 async def test_seed_is_idempotent(app_client, session) -> None:
     await seed_rules(session)
     await session.commit()

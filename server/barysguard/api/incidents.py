@@ -165,6 +165,7 @@ async def _detail(session: AsyncSession, incident: Incident, hostname: str) -> I
         matches=[
             IncidentMatch(
                 rule_key=m["rule_key"],
+                rule_title=m.get("rule_title", ""),
                 count=m["count"],
                 points=m["points"],
                 samples=m.get("samples", []),

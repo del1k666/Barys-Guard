@@ -180,3 +180,19 @@ async def test_the_same_event_is_not_counted_twice(app_client, session) -> None:
     incident = await apply_verdict(session, event, verdict)
 
     assert incident.events_count == 1
+
+
+def test_title_uses_the_rule_title_for_custom_rules() -> None:
+    matches = [
+        {"rule_key": "iin_bin", "rule_title": "ИИН/БИН (Казахстан)", "count": 1},
+        {"rule_key": "custom_aa11bb22", "rule_title": "Номер договора", "count": 2},
+    ]
+
+    assert build_title("copy", matches) == "Копирование на USB: ИИН/БИН ×1, Номер договора ×2"
+
+
+def test_title_falls_back_to_the_key_without_a_title() -> None:
+    assert (
+        build_title("copy", [{"rule_key": "custom_zz", "count": 1}])
+        == "Копирование на USB: custom_zz ×1"
+    )

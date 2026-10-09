@@ -340,6 +340,7 @@ class IncidentPage(BaseModel):
 
 class IncidentMatch(BaseModel):
     rule_key: str
+    rule_title: str = ""
     count: int
     points: int
     samples: list[str]

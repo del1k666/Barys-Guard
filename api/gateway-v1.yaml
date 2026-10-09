@@ -2906,6 +2906,10 @@ components:
         rule_key:
           type: string
           title: Rule Key
+        rule_title:
+          type: string
+          title: Rule Title
+          default: ''
         count:
           type: integer
           title: Count

@@ -71,7 +71,11 @@ async def _scan_for(
         data = await _read(store, artifact)
         name = str((event.subject or {}).get("dst_path", ""))
         outcome = await asyncio.to_thread(
-            scan_bytes, name, data, ruleset.detectors(), limits_from_settings(settings)
+            scan_bytes,
+            name,
+            data,
+            ruleset.detectors(settings.regex_max_match),
+            limits_from_settings(settings),
         )
         versions = ruleset.version_ids()
         status, truncated = outcome.status, outcome.truncated

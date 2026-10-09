@@ -28,7 +28,8 @@ def build_title(action: str, matches: list[dict[str, Any]]) -> str:
         matches, key=lambda m: order.index(m["rule_key"]) if m["rule_key"] in order else len(order)
     )
     parts = ", ".join(
-        f"{_RULE_LABELS.get(m['rule_key'], m['rule_key'])} ×{m['count']}" for m in ranked
+        f"{_RULE_LABELS.get(m['rule_key']) or m.get('rule_title') or m['rule_key']} ×{m['count']}"
+        for m in ranked
     )
     return f"{head}: {parts}"
 

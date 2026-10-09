@@ -115,7 +115,13 @@ async def test_detail_has_verdict_matches_and_events_without_full_values(
     body = response.json()
     assert body["verdict"] == {"status": "flagged", "score": 75, "severity": "high"}
     assert body["matches"] == [
-        {"rule_key": "iin_bin", "count": 2, "points": 40, "samples": ["**********17"]}
+        {
+            "rule_key": "iin_bin",
+            "rule_title": "",
+            "count": 2,
+            "points": 40,
+            "samples": ["**********17"],
+        }
     ]
     assert len(body["events"]) == 1
     assert body["events"][0]["dst_path"] == "E:\\salary.xlsx"

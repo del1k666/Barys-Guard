@@ -1,6 +1,7 @@
 """Правила инспекции: встроенный набор и загрузка действующих версий."""
 
 import hashlib
+import logging
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -16,7 +17,10 @@ from barysguard.services.inspection.detectors import (
     DictionaryDetector,
     IinBinDetector,
 )
+from barysguard.services.inspection.regex_detector import PatternError, RegexDetector
 from barysguard.services.inspection.scoring import RuleWeight
+
+logger = logging.getLogger("barysguard.rules")
 
 MARKINGS_KEY = "markings"
 
@@ -125,12 +129,15 @@ async def seed_rules(session: AsyncSession) -> SeedReport:
 @dataclass(frozen=True)
 class RuleRuntime:
     key: str
+    title: str
     kind: str
     detector: str
     rule_version_id: str
     weight: int
     cap: int
     terms: tuple[str, ...]
+    pattern: str = ""
+    ignore_case: bool = False
 
 
 @dataclass(frozen=True)
@@ -138,11 +145,22 @@ class Ruleset:
     hash: str
     rules: tuple[RuleRuntime, ...]
 
-    def detectors(self) -> list[Detector]:
+    def detectors(self, max_match: int = 200) -> list[Detector]:
         result: list[Detector] = []
         for rule in self.rules:
             if rule.kind == "dictionary":
                 result.append(DictionaryDetector(rule.key, rule.terms))
+            elif rule.kind == "regex":
+                try:
+                    result.append(
+                        RegexDetector(rule.key, rule.pattern, rule.ignore_case, max_match)
+                    )
+                except PatternError:
+                    # Повреждённый шаблон не должен останавливать воркер; текст шаблона в лог
+                    # не пишется — достаточно ключа правила.
+                    logger.error(
+                        "правило пропущено: шаблон не компилируется", extra={"rule": rule.key}
+                    )
             elif rule.detector == "iin_bin":
                 result.append(IinBinDetector(rule.key))
             elif rule.detector == "card":
@@ -150,7 +168,7 @@ class Ruleset:
         return result
 
     def weights(self) -> list[RuleWeight]:
-        return [RuleWeight(r.key, r.rule_version_id, r.weight, r.cap) for r in self.rules]
+        return [RuleWeight(r.key, r.rule_version_id, r.weight, r.cap, r.title) for r in self.rules]
 
     def version_ids(self) -> dict[str, str]:
         return {rule.key: rule.rule_version_id for rule in self.rules}
@@ -200,12 +218,15 @@ async def load_ruleset(session: AsyncSession) -> Ruleset:
         runtime.append(
             RuleRuntime(
                 key=rule.key,
+                title=rule.title,
                 kind=rule.kind,
                 detector=str(version.params.get("detector", "")),
                 rule_version_id=str(version.id),
                 weight=int(version.params["weight"]),
                 cap=int(version.params["cap"]),
                 terms=terms,
+                pattern=str(version.params.get("pattern", "")),
+                ignore_case=bool(version.params.get("ignore_case", False)),
             )
         )
     digest = hashlib.sha256("\n".join(sorted(lines)).encode()).hexdigest()

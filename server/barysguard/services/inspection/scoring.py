@@ -13,6 +13,7 @@ class RuleWeight:
     rule_version_id: str
     weight: int
     cap: int
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,7 @@ def evaluate(findings: dict[str, dict[str, Any]], weights: Sequence[RuleWeight])
         matches.append(
             {
                 "rule_key": rule.key,
+                "rule_title": rule.title,
                 "rule_version_id": rule.rule_version_id,
                 "count": count,
                 "points": points,

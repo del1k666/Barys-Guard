@@ -64,6 +64,7 @@ def test_matches_carry_rule_version_and_masked_samples() -> None:
     assert result.matches == [
         {
             "rule_key": "markings",
+            "rule_title": "",
             "rule_version_id": "v-mark",
             "count": 1,
             "points": 15,
@@ -71,6 +72,15 @@ def test_matches_carry_rule_version_and_masked_samples() -> None:
         }
     ]
     assert result.status == "clean"  # 15 < 20
+
+
+def test_matches_carry_the_rule_title() -> None:
+    weights = [RuleWeight("custom_ab12cd34", "v-x", weight=30, cap=2, title="Номер договора")]
+
+    result = evaluate({"custom_ab12cd34": {"count": 3, "samples": ["**"]}}, weights)
+
+    assert result.matches[0]["rule_title"] == "Номер договора"
+    assert result.score == 60
 
 
 def test_findings_of_unknown_rules_are_ignored() -> None:
