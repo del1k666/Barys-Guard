@@ -12,6 +12,7 @@ from barysguard.services.inspection.detectors import (
     luhn_ok,
     normalize,
 )
+from barysguard.services.inspection.regex_detector import RegexDetector
 
 # Контрольный разряд посчитан вручную по стандарту (веса 1..11, затем 3..11,1,2).
 IIN_FIRST_PASS = "900101300017"  # остаток 7 с первого прохода
@@ -208,3 +209,35 @@ def test_chunking_does_not_change_the_result(size: int) -> None:
     assert whole["iin_bin"].count == 4
     assert whole["card"].count == 7
     assert whole["markings"].count == 2
+
+
+def test_detectors_report_the_span_of_each_match() -> None:
+    iin_text = f"номер {IIN_FIRST_PASS} конец"
+    [(sample, start, end)] = list(IinBinDetector().find(iin_text, 0, len(iin_text)))
+    assert iin_text[start:end] == IIN_FIRST_PASS
+    assert sample == "*" * 10 + IIN_FIRST_PASS[-2:]
+
+    card_text = f"карта {VISA[:4]} {VISA[4:8]} {VISA[8:12]} {VISA[12:]} ок"
+    [(_, start, end)] = list(CardDetector().find(card_text, 0, len(card_text)))
+    assert card_text[start:end].replace(" ", "") == VISA
+
+    word_text = "Это КОНФИДЕНЦИАЛЬНО!"
+    [(sample, start, end)] = list(
+        DictionaryDetector("m", ["конфиденциально"]).find(word_text, 0, len(word_text))
+    )
+    assert word_text[start:end] == "КОНФИДЕНЦИАЛЬНО"
+    assert sample == "конфиденциально"
+
+    regex_text = "Договор №1234 и №5678"
+    spans = [
+        regex_text[s:e]
+        for _, s, e in RegexDetector("c", r"№\d+").find(regex_text, 0, len(regex_text))
+    ]
+    assert spans == ["№1234", "№5678"]
+
+
+def test_only_value_detectors_mask_their_hits() -> None:
+    assert IinBinDetector().masks_hits is True
+    assert CardDetector().masks_hits is True
+    assert RegexDetector("c", r"\d+").masks_hits is True
+    assert DictionaryDetector("m", ["гриф"]).masks_hits is False

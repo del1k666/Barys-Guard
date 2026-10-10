@@ -97,9 +97,12 @@ class Detector(Protocol):
     # Сколько символов от начала совпадения детектор может просмотреть (без учёта соседних
     # символов для проверки границ): столько текста сканер держит в запасе на стыке порций.
     max_length: int
+    # Значение совпадения чувствительно (ИИН, карта, шаблон): в контексте фрагментов такие
+    # совпадения заменяются маской. Словарные термины маски не требуют.
+    masks_hits: bool
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
-        """Настоящие совпадения, начавшиеся в [start, end): (маска образца, конец совпадения).
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
+        """Настоящие совпадения, начавшиеся в [start, end): (маска образца, начало, конец).
 
         Совпадения не пересекаются и идут по возрастанию начала; результат для позиции
         зависит только от текста вокруг неё, а не от того, откуда начат поиск.
@@ -117,30 +120,32 @@ class SkipsRest(Protocol):
 
 class IinBinDetector:
     max_length = 12
+    masks_hits = True
     pattern = re.compile(r"(?<!\d)\d{12}(?!\d)")
 
     def __init__(self, key: str = "iin_bin") -> None:
         self.key = key
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         for match in self.pattern.finditer(data, start):
             if match.start() >= end:
                 return
             number = match.group()
             if is_iin(number) or is_bin(number):
-                yield "*" * 10 + number[-2:], match.end()
+                yield "*" * 10 + number[-2:], match.start(), match.end()
 
 
 class CardDetector:
     # До 19 цифр и до 18 одиночных разделителей между ними.
     max_length = 37
+    masks_hits = True
     pattern = re.compile(r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)")
     _group_start = re.compile(r"(?<=[ -])\d")
 
     def __init__(self, key: str = "card") -> None:
         self.key = key
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         position = start
         while True:
             match = self.pattern.search(data, position)
@@ -161,12 +166,12 @@ class CardDetector:
                 position = match.end()
                 continue
             yield hit
-            position = hit[1]
+            position = hit[2]
 
-    def _check(self, match: re.Match[str]) -> tuple[str, int] | None:
+    def _check(self, match: re.Match[str]) -> tuple[str, int, int] | None:
         digits = re.sub(r"\D", "", match.group())
         if luhn_ok(digits) and _card_network_ok(digits):
-            return "*" * (len(digits) - 4) + digits[-4:], match.end()
+            return "*" * (len(digits) - 4) + digits[-4:], match.start(), match.end()
         return None
 
 
@@ -183,6 +188,8 @@ def _term_pattern(term: str) -> str:
 
 
 class DictionaryDetector:
+    masks_hits = False
+
     def __init__(self, key: str, terms: Iterable[str]) -> None:
         self.key = key
         unique: dict[str, str] = {}
@@ -196,11 +203,11 @@ class DictionaryDetector:
         # Регистр и ё/е решает сам детектор: текст сканер не нормализует.
         self.pattern = re.compile(rf"(?<!\w)(?:{body})(?!\w)", re.IGNORECASE)
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         for match in self.pattern.finditer(data, start):
             if match.start() >= end:
                 return
-            yield normalize(" ".join(match.group().split())), match.end()
+            yield normalize(" ".join(match.group().split())), match.start(), match.end()
 
 
 class ContentScanner:
@@ -253,7 +260,7 @@ class ContentScanner:
             skipper = cast(SkipsRest, detector)
             consumed = skipper.skip_rest(data, consumed)
         self._open[index] = self._open[index] and consumed >= len(data)
-        for sample, match_end in detector.find(data, max(self._context, consumed), end):
+        for sample, _begin, match_end in detector.find(data, max(self._context, consumed), end):
             if sample:
                 self._findings[detector.key].add(sample)
             self._open[index] = not sample and match_end >= len(data)
