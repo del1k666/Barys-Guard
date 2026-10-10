@@ -2,28 +2,17 @@
 
 package netupload
 
-// ВНИМАНИЕ: свойства событий НЕ ПОДТВЕРЖДЕНЫ на живой системе.
-//
-// Подтверждено манифестами провайдеров (wevtutil gp <провайдер> /ge /gm):
-//   - Kernel-File: ключевые слова 0x10 FILENAME, 0x20 FILEIO, 0x80 CREATE,
-//     0x100 READ; события 12 Create (0xA0), 14 Close (0x20), 15 Read (0x120);
-//   - Kernel-Network: 10/26/42/58 — отправка TCPv4/TCPv6/UDPv4/UDPv6;
-//   - DNS-Client: 3008 — завершённый запрос.
-//
-// Имена FileName/FileObject для Create встречаются в тестах библиотеки etw.
-//
-// НЕ проверено до запуска agent/cmd/etwprobe от администратора на настоящей
-// машине (сверить по выводу пробника):
-//  1. имена свойств: FileObject (Create/Read/Close), FileName, PID, size, daddr,
-//     QueryName, QueryResults;
-//  2. FileObject — одно и то же значение в Create, Read и Close одного файла;
-//  3. путь в Create приходит в NT-форме (\Device\HarddiskVolumeN\...);
-//  4. формат daddr (строка адреса, "ip:порт" или число) и size (десятичное число);
-//  5. формат QueryResults ("type:  5 host;1.2.3.4;");
-//  6. что события чтения действительно приходят с выбранной маской ключевых слов.
-//
-// При расхождении правится только этот файл (и asAddr/asUint в props.go,
-// если формат значений другой).
+// Идентификаторы и свойства подтверждены пробником agent/cmd/etwprobe на живой
+// Windows 11 (2026-10-10):
+//   - Kernel-File: 12 Create (FileName, FileObject — путь в NT-форме
+//     \Device\HarddiskVolumeN\...), 14 Close, 15 Read (FileObject без FileName,
+//     поэтому путь берётся из таблицы по FileObject из Create);
+//   - Kernel-Network: 10/26/42/58 — отправка (PID, size, daddr, dport); daddr —
+//     чистый IP, порт отдельным свойством; 11/43 — приём;
+//   - DNS-Client: 3008 — QueryName и QueryResults вида "142.251.20.94;"
+//     (CNAME-формат "type:  5 host;" код тоже разбирает).
+// Не проверено вживую: полный сценарий выгрузки файла в браузере и Telegram
+// (раздел 6 docs/NETWORK_UPLOAD.md).
 const (
 	guidKernelFile    = "{EDD08927-9CC4-4E65-B970-C2560FB5C289}" // Microsoft-Windows-Kernel-File
 	guidKernelNetwork = "{7DD42A49-5329-4832-8DFD-43D979153A88}" // Microsoft-Windows-Kernel-Network
