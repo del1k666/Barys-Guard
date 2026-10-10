@@ -85,6 +85,29 @@ async def test_incidents_are_listed_newest_first_with_hostname(app_client, sessi
     assert response.json()["next_cursor"] is None
 
 
+async def test_list_does_not_expose_matches_or_fragments(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-nofrag", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-nofrag")
+    secret = [
+        {
+            **MATCHES[0],
+            "samples": ["*******SAMPLE-MARK"],
+            "fragments": [{"before": "BEFORE-MARK ", "hit": "HIT-MARK", "after": " AFTER-MARK"}],
+        }
+    ]
+    await _flagged(session, agent.agent_id, matches=secret)
+
+    response = await app_client.get("/api/v1/incidents")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert items
+    for item in items:
+        assert "matches" not in item and "fragments" not in item
+    for mark in ("SAMPLE-MARK", "BEFORE-MARK", "HIT-MARK", "AFTER-MARK"):
+        assert mark not in response.text
+
+
 async def test_filters_and_pagination(app_client, session) -> None:
     await login_as(app_client, session, username="inc-filter", role=UserRole.ADMIN)
     agent = await enroll_agent(app_client, session, "api-filter")
