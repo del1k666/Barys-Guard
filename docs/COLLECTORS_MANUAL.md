@@ -131,6 +131,8 @@ $tok = (Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/v1/enrollm
 
 Загруженное содержимое проверяет воркер инспекции и создаёт инциденты — см. `docs/DLP_WORKER.md`.
 
+Отправка файлов в облака и мессенджеры — см. `docs/NETWORK_UPLOAD.md`.
+
 ## Что агент не умеет в этом цикле
 
 - Блокировать запись на USB: нужен драйвер (minifilter), это отдельная фаза.

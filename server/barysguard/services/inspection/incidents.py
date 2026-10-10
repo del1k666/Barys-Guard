@@ -17,6 +17,7 @@ _ACTION_TITLES = {
     "copy": "Копирование на USB",
     "create": "Запись на USB",
     "modify": "Изменение на USB",
+    "upload": "Отправка файла в сеть",
 }
 
 

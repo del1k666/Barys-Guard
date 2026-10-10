@@ -8,6 +8,7 @@ import (
 
 	"github.com/barysguard/agent/internal/artifacts"
 	"github.com/barysguard/agent/internal/collectors/filewatch"
+	"github.com/barysguard/agent/internal/collectors/netupload"
 	"github.com/barysguard/agent/internal/collectors/usb"
 	"github.com/barysguard/agent/internal/events"
 	"github.com/barysguard/agent/internal/identity"
@@ -25,6 +26,10 @@ type Platform struct {
 	StartWatcher filewatch.StartWatcher
 	Profiles     func() []string
 	Stager       artifacts.Stager
+	// NetSource — источник событий чтения файлов и сети (ETW); nil — сборщика netupload нет.
+	NetSource netupload.Source
+	// ProcessInfo определяет процесс по PID для события отправки.
+	ProcessInfo func(pid uint32) map[string]any
 }
 
 func DefaultPlatform() Platform {
@@ -34,6 +39,8 @@ func DefaultPlatform() Platform {
 		Identity:     identity.New(),
 		Attributor:   filewatch.NewAttributor(),
 		StartWatcher: filewatch.DefaultStartWatcher,
+		NetSource:    netupload.NewSource(),
+		ProcessInfo:  netupload.ProcessInfo,
 		Profiles: func() []string {
 			return filewatch.ProfileDirs(os.Getenv("SystemDrive") + `\Users`)
 		},
@@ -58,8 +65,8 @@ func pollInterval(document map[string]any) time.Duration {
 	return defaultPollSeconds * time.Second
 }
 
-// Build строит группу сборщиков по документу. Опрос томов (hub) нужен обоим
-// сборщикам и запускается, только если включён хотя бы один из них.
+// Build строит группу сборщиков по документу. Опрос томов (hub) нужен всем
+// сборщикам и запускается, если включён хотя бы один из них.
 func Build(document map[string]any, dataDir string, plat Platform) []events.Collector {
 	if !plat.Supported {
 		return nil
@@ -71,7 +78,9 @@ func Build(document map[string]any, dataDir string, plat Platform) []events.Coll
 	}
 	cfg := filewatch.ConfigFromDocument(document, profiles, dataDir)
 	useFiles := cfg.Enabled
-	if !useUSB && !useFiles {
+	netCfg := netupload.ConfigFromDocument(document)
+	useNet := plat.NetSource != nil && netCfg.Enabled
+	if !useUSB && !useFiles && !useNet {
 		return nil
 	}
 
@@ -85,6 +94,12 @@ func Build(document map[string]any, dataDir string, plat Platform) []events.Coll
 			Config: cfg, Hub: hub, Identity: plat.Identity,
 			Attributor: plat.Attributor, StartWatcher: plat.StartWatcher,
 			Stager: plat.Stager,
+		}))
+	}
+	if useNet {
+		list = append(list, netupload.New(netupload.Deps{
+			Config: netCfg, Source: plat.NetSource, Stager: plat.Stager,
+			Identity: plat.Identity, ProcessInfo: plat.ProcessInfo, Volumes: hub.Current,
 		}))
 	}
 	return list

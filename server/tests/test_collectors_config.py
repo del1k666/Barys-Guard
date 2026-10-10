@@ -69,3 +69,62 @@ def test_artifact_rejects_unknown_keys_and_absurd_values() -> None:
         AgentConfigDocument.model_validate({"collectors": {"artifact": {"max_byte": 1}}})
     with pytest.raises(ValidationError):
         AgentConfigDocument.model_validate({"collectors": {"artifact": {"max_bytes": 0}}})
+
+
+def test_net_upload_defaults() -> None:
+    section = AgentConfigDocument().model_dump(mode="json")["collectors"]["net_upload"]
+
+    assert section == {
+        "enabled": True,
+        "window_seconds": 60,
+        "size_tolerance_percent": 20,
+        "min_file_bytes": 1024,
+        "extensions": [],
+        "exclude_paths": [],
+        "services": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"window_seconds": 4},
+        {"window_seconds": 601},
+        {"size_tolerance_percent": -1},
+        {"size_tolerance_percent": 91},
+        {"min_file_bytes": 0},
+        {"extensions": [""]},
+        {"exclude_paths": [""]},
+        {"services": [{"key": "Bad Key", "name": "x"}]},
+        {"services": [{"key": "ok", "name": ""}]},
+        {"services": [{"key": "ok", "name": "x", "cidrs": ["not-a-network"]}]},
+        {"services": [{"key": "ok", "name": "x", "domains": [""]}]},
+        {"services": [{"key": "ok", "name": "x", "typo": 1}]},
+        {"typo_field": 1},
+    ],
+)
+def test_net_upload_rejects_bad_values(patch: dict) -> None:
+    with pytest.raises(ValidationError):
+        AgentConfigDocument.model_validate({"collectors": {"net_upload": patch}})
+
+
+def test_net_upload_accepts_a_custom_service() -> None:
+    document = AgentConfigDocument.model_validate(
+        {
+            "collectors": {
+                "net_upload": {
+                    "extensions": ["pdf", "docx"],
+                    "services": [
+                        {
+                            "key": "corp_cloud",
+                            "name": "Корпоративное облако",
+                            "domains": ["cloud.example.kz"],
+                            "cidrs": ["10.20.0.0/16"],
+                        }
+                    ],
+                }
+            }
+        }
+    )
+
+    assert document.collectors.net_upload.services[0].key == "corp_cloud"

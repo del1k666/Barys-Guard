@@ -11,6 +11,7 @@ from barysguard.gateway.event_schemas import Channel
 
 FILE_ACTIONS = frozenset({"create", "modify", "rename", "delete", "copy"})
 USB_ACTIONS = frozenset({"mount", "unmount"})
+NETWORK_UPLOAD_ACTION = "upload"
 VOLUME_TYPES = frozenset({"fixed", "removable", "network", "unknown"})
 
 
@@ -43,9 +44,28 @@ def _usb_ok(action: str, subject: dict[str, Any]) -> bool:
     )
 
 
+def _non_negative_int(value: Any) -> bool:
+    # bool в Python — подкласс int: True не должно сойти за размер.
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _network_ok(action: str, subject: dict[str, Any]) -> bool:
+    # Проверяется только отправка файла; остальные действия канала принимаются как есть.
+    if action != NETWORK_UPLOAD_ACTION:
+        return True
+    if not _text(subject.get("src_path")) or not _volume_ok(subject.get("volume")):
+        return False
+    return all(
+        subject.get(field) is None or _non_negative_int(subject[field])
+        for field in ("size_bytes", "sent_bytes")
+    )
+
+
 def subject_is_valid(channel: Channel, action: str, subject: dict[str, Any]) -> bool:
     if channel is Channel.FILE:
         return _file_ok(action, subject)
     if channel is Channel.USB:
         return _usb_ok(action, subject)
+    if channel is Channel.NETWORK:
+        return _network_ok(action, subject)
     return True
