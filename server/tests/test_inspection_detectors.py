@@ -241,3 +241,113 @@ def test_only_value_detectors_mask_their_hits() -> None:
     assert CardDetector().masks_hits is True
     assert RegexDetector("c", r"\d+").masks_hits is True
     assert DictionaryDetector("m", ["гриф"]).masks_hits is False
+
+
+def _scan_chunks(text: str, size: int, *detectors):
+    scanner = ContentScanner(list(detectors))
+    for index in range(0, len(text), size):
+        scanner.feed(text[index : index + size])
+    return scanner.finish()
+
+
+FILLER = "обычный текст без значений " * 12
+
+
+def test_fragments_are_collected_with_context_and_capped() -> None:
+    text = (FILLER + f"сотрудник {IIN_FIRST_PASS} в списке. ") * 7
+
+    found = ContentScanner([IinBinDetector()])
+    found.feed(text)
+    result = found.finish()["iin_bin"]
+
+    assert result.count == 7
+    assert len(result.fragments) == 5
+    first = result.fragments[0]
+    assert first["hit"] == "*" * 10 + IIN_FIRST_PASS[-2:]
+    assert "сотрудник" in first["before"] and "в списке" in first["after"]
+    assert IIN_FIRST_PASS not in repr(result.fragments)
+
+
+def _fragment_document() -> str:
+    return (
+        FILLER
+        + f"номер {IIN_FIRST_PASS} дальше "
+        + FILLER
+        + "гриф КОНФИДЕНЦИАЛЬНО тут "
+        + FILLER
+        + "Договор №1234 подписан "
+        + FILLER
+        # Соседние значения вплотную: окна фрагментов режут их на разных местах.
+        + f"{IIN_SECOND_PASS} {VISA} №77 конфиденциально {IIN_ZERO} "
+        + "x" * 97
+        + f" {MIR} конец"
+    )
+
+
+def _fragment_detectors() -> tuple:
+    return (
+        IinBinDetector(),
+        CardDetector(),
+        DictionaryDetector("markings", ["конфиденциально"]),
+        # Малый max_match: запас на стыке задают короткие детекторы, а не шаблон в 200 символов,
+        # иначе нехватка правого контекста была бы незаметна.
+        RegexDetector("contract", r"№\d+", max_match=20),
+    )
+
+
+@pytest.mark.parametrize("size", [1, 2, 3, 7, 50, 119, 120, 121, 200, 1000])
+def test_fragments_do_not_depend_on_chunk_size(size: int) -> None:
+    text = _fragment_document()
+
+    whole = _scan_chunks(text, len(text), *_fragment_detectors())
+    chunked = _scan_chunks(text, size, *_fragment_detectors())
+
+    assert {k: f.fragments for k, f in chunked.items()} == {
+        k: f.fragments for k, f in whole.items()
+    }
+    assert [len(f.fragments) for f in whole.values()] == [3, 2, 2, 2]
+
+
+def test_scanner_gives_full_left_history_to_every_fragment(monkeypatch) -> None:
+    """Контракт build_fragment: не в начале документа — слева не меньше HISTORY символов.
+
+    Совпадения ставятся на разных расстояниях от начала, чтобы при любом размере
+    порции какое-то из них оказалось сразу за стыком.
+    """
+    from barysguard.services.inspection import detectors as module
+    from barysguard.services.inspection.fragments import HISTORY
+
+    original = module.build_fragment
+    calls: list[tuple[int, bool]] = []
+
+    def checked(data, start, end, sample, masks_hits, detectors, at_doc_start):
+        calls.append((start, at_doc_start))
+        assert at_doc_start or start >= HISTORY, (start, at_doc_start)
+        return original(data, start, end, sample, masks_hits, detectors, at_doc_start)
+
+    monkeypatch.setattr(module, "build_fragment", checked)
+    text = "".join(f"{'ж' * gap} {IIN_FIRST_PASS} " for gap in range(0, 300, 23))
+    whole = _scan_chunks(text, len(text), IinBinDetector())
+    for size in (1, 2, 3, 5, 13, 64, 119, 120, 121, 133):
+        calls.clear()
+        chunked = _scan_chunks(text, size, IinBinDetector())
+        assert chunked["iin_bin"].fragments == whole["iin_bin"].fragments, size
+        assert any(not at_start for _, at_start in calls), size
+
+
+def test_neighbour_values_stay_masked_across_chunk_boundaries() -> None:
+    text = FILLER + f"{IIN_FIRST_PASS} рядом {IIN_SECOND_PASS} и {VISA}. " + FILLER
+
+    for size in (3, 11, 64):
+        found = _scan_chunks(text, size, IinBinDetector(), CardDetector())
+        shown = repr([f.fragments for f in found.values()])
+        assert IIN_FIRST_PASS not in shown
+        assert IIN_SECOND_PASS not in shown
+        assert VISA not in shown
+
+
+def test_match_at_the_edges_of_the_document_has_no_false_ellipsis() -> None:
+    result = _scan_chunks(f"{IIN_FIRST_PASS} конец", 4, IinBinDetector())["iin_bin"]
+
+    assert result.fragments[0]["before"] == ""
+    assert not result.fragments[0]["after"].endswith("…")

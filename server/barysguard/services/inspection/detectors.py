@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol, cast
 
+from barysguard.services.inspection.fragments import HISTORY, MAX_FRAGMENTS, build_fragment
+
 MAX_SAMPLES = 5
 
 _WEIGHTS_FIRST = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
@@ -85,6 +87,7 @@ def _card_network_ok(digits: str) -> bool:
 class Finding:
     count: int = 0
     samples: list[str] = field(default_factory=list)
+    fragments: list[dict[str, str]] = field(default_factory=list)
 
     def add(self, sample: str) -> None:
         self.count += 1
@@ -216,16 +219,22 @@ class ContentScanner:
     Порция склеивается с хвостом прошлой. Считаются только совпадения, начавшиеся
     до последних `overlap` символов (они гарантированно закончились внутри данных);
     остальное переходит в хвост вместе с одним символом контекста, чтобы
-    проверка «не часть более длинного числа» видела предыдущий символ. Каждый детектор
-    продолжает поиск с конца своего последнего совпадения, даже если оно заходит в хвост.
+    проверка «не часть более длинного числа» видела предыдущий символ, и ещё HISTORY
+    символами перед ним — левым контекстом фрагментов. Запас справа тоже больше на
+    HISTORY: у совпадения, засчитанного до конца текста, правый контекст уже в данных.
+    Каждый детектор продолжает поиск с конца своего последнего совпадения, даже если
+    оно заходит в хвост.
     Текст не нормализуется: регистр учитывают сами детекторы.
     """
 
     def __init__(self, detectors: Sequence[Detector]) -> None:
         self._detectors = list(detectors)
-        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2
+        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2 + HISTORY
         self._carry = ""
+        # Позиция в хвосте, с которой начинаются ещё не обработанные совпадения.
         self._context = 0
+        # Хвост начинается с начала документа: слева от него ничего нет.
+        self._at_start = True
         # Позиция в хвосте, с которой каждый детектор продолжает поиск
         # (конец его прошлого совпадения, если оно зашло в хвост).
         self._resume = [0] * len(self._detectors)
@@ -240,12 +249,15 @@ class ContentScanner:
         if owned_end <= self._context:
             self._carry = data
             return
-        cut = owned_end - 1  # хвост начинается с символа контекста
+        cut = owned_end - 1  # последний засчитанный символ становится контекстом
+        keep_from = max(cut - HISTORY, 0)  # слева ещё HISTORY символов — для фрагментов
         for index, detector in enumerate(self._detectors):
             consumed = self._scan(index, detector, data, owned_end)
-            self._resume[index] = max(consumed - cut, 0)
-        self._carry = data[cut:]
-        self._context = 1
+            self._resume[index] = max(consumed - keep_from, 0)
+        self._carry = data[keep_from:]
+        # Позиция owned_end в новом хвосте; при keep_from > 0 это HISTORY + 1.
+        self._context = cut - keep_from + 1
+        self._at_start = self._at_start and keep_from == 0
 
     def finish(self) -> dict[str, Finding]:
         for index, detector in enumerate(self._detectors):
@@ -260,9 +272,22 @@ class ContentScanner:
             skipper = cast(SkipsRest, detector)
             consumed = skipper.skip_rest(data, consumed)
         self._open[index] = self._open[index] and consumed >= len(data)
-        for sample, _begin, match_end in detector.find(data, max(self._context, consumed), end):
+        for sample, begin, match_end in detector.find(data, max(self._context, consumed), end):
             if sample:
-                self._findings[detector.key].add(sample)
+                finding = self._findings[detector.key]
+                finding.add(sample)
+                if len(finding.fragments) < MAX_FRAGMENTS:
+                    finding.fragments.append(
+                        build_fragment(
+                            data,
+                            begin,
+                            match_end,
+                            sample,
+                            detector.masks_hits,
+                            self._detectors,
+                            self._at_start,
+                        )
+                    )
             self._open[index] = not sample and match_end >= len(data)
             consumed = match_end
         return consumed

@@ -16,7 +16,8 @@ from barysguard.services.inspection.extract import Deadline, ExtractFailure, Lim
 class ScanOutcome:
     status: str
     truncated: bool
-    # {rule_key: {"count": n, "samples": [...]}} — только ключи с ненулевым счётчиком.
+    # {rule_key: {"count": n, "samples": [...], "fragments": [...]}} —
+    # только ключи с ненулевым счётчиком.
     findings: dict[str, dict[str, Any]]
 
 
@@ -51,7 +52,7 @@ def scan_bytes(
         return ScanOutcome("error", False, {})
 
     findings = {
-        key: {"count": finding.count, "samples": finding.samples}
+        key: {"count": finding.count, "samples": finding.samples, "fragments": finding.fragments}
         for key, finding in found.items()
         if finding.count > 0
     }
