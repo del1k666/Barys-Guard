@@ -38,11 +38,15 @@ def mask_text(text: str, detectors: Sequence["Detector"]) -> str:
         for sample, start, end in detector.find(text, 0, len(text)):
             if sample:
                 spans.append((start, end, sample))
-    spans.sort()
+    # При общем начале первым идёт более длинное совпадение.
+    spans.sort(key=lambda span: (span[0], -span[1]))
     parts: list[str] = []
     position = 0
     for start, end, sample in spans:
         if start < position:
+            # Пересечение: хвост за уже выведенным не показываем (ни текстом, ни маской),
+            # иначе часть более длинного значения осталась бы открытой.
+            position = max(position, end)
             continue
         parts.append(text[position:start])
         parts.append(sample)
@@ -93,6 +97,10 @@ def build_fragment(
     """Фрагмент вокруг совпадения `data[start:end]`.
 
     `at_doc_start` — `data[0]` является началом документа (слева ничего нет).
+
+    Контракт вызывающего: `at_doc_start=False` означает, что слева от `start` передано
+    не меньше HISTORY символов, если текст там есть, то есть `data` не начинается посреди
+    значения, которое детектор мог бы не узнать. Защиты от обратного здесь нет.
     """
     left = max(0, start - HISTORY)
     more_before = left > 0 or not at_doc_start
