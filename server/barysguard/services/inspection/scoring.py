@@ -53,7 +53,10 @@ def evaluate(findings: dict[str, dict[str, Any]], weights: Sequence[RuleWeight])
                 "rule_version_id": rule.rule_version_id,
                 "count": count,
                 "points": points,
+                "weight": rule.weight,
+                "cap": rule.cap,
                 "samples": list(found.get("samples", [])),
+                "fragments": list(found.get("fragments", [])),
             }
         )
     score = min(total, 100)

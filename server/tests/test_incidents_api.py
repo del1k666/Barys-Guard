@@ -22,12 +22,22 @@ MATCHES = [
         "count": 2,
         "points": 40,
         "samples": ["**********17"],
+        "weight": 20,
+        "cap": 5,
+        "fragments": [{"before": "ИИН ", "hit": "**********17", "after": " в списке"}],
     }
 ]
 
 
 async def _flagged(
-    session, agent_id, *, user="PC\\ivanov", at=None, score=75, severity="high"
+    session,
+    agent_id,
+    *,
+    user="PC\\ivanov",
+    at=None,
+    score=75,
+    severity="high",
+    matches=MATCHES,
 ) -> Incident:
     event = Event(
         occurred_at=at or datetime.now(UTC),
@@ -51,7 +61,7 @@ async def _flagged(
         reason=None,
         score=score,
         severity=severity,
-        matches=MATCHES,
+        matches=matches,
     )
     incident = await apply_verdict(session, event, verdict)
     await session.commit()
@@ -121,11 +131,28 @@ async def test_detail_has_verdict_matches_and_events_without_full_values(
             "count": 2,
             "points": 40,
             "samples": ["**********17"],
+            "weight": 20,
+            "cap": 5,
+            "fragments": [{"before": "ИИН ", "hit": "**********17", "after": " в списке"}],
         }
     ]
     assert len(body["events"]) == 1
     assert body["events"][0]["dst_path"] == "E:\\salary.xlsx"
     assert "900101300017" not in response.text
+
+
+async def test_old_verdict_without_fragments_gives_empty_defaults(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-old", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-old")
+    old = [
+        {"rule_key": "iin_bin", "rule_version_id": "v1", "count": 1, "points": 20, "samples": []}
+    ]
+    incident = await _flagged(session, agent.agent_id, matches=old)
+
+    body = (await app_client.get(f"/api/v1/incidents/{incident.id}")).json()
+
+    assert body["matches"][0]["fragments"] == []
+    assert body["matches"][0]["weight"] == 0 and body["matches"][0]["cap"] == 0
 
 
 async def test_unknown_incident_is_404(app_client, session) -> None:
