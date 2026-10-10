@@ -438,3 +438,62 @@ def test_whitespace_heavy_window_does_not_show_the_tail_of_a_value(size: int | N
         for fragment in finding.fragments:
             for side in (fragment["before"], fragment["after"]):
                 assert re.search(r"\d{4}", side) is None, fragment
+
+
+IIN_DRIFT = "900101300007"
+NEAR_CARD = " ".join(VISA)  # 31 исходный символ → маска из 16: маска короче значения
+STRADDLING_CARD = " ".join(MASTERCARD)
+
+
+def _drift_text(side: str, gap: int) -> str:
+    if side == "left":
+        return (
+            "ж" * 200
+            + f" ж {STRADDLING_CARD} ж "
+            + "ж" * gap
+            + f" ж {NEAR_CARD} ж {NEAR_CARD} ж {IIN_DRIFT} "
+            + "ж" * 200
+        )
+    return (
+        "ж" * 200
+        + f" {IIN_DRIFT} ж {NEAR_CARD} ж {NEAR_CARD} ж "
+        + "ж" * gap
+        + f" ж {STRADDLING_CARD} ж "
+        + "ж" * 200
+    )
+
+
+def _assert_only_masks_show_digits(fragment: dict[str, str]) -> None:
+    from barysguard.services.inspection.fragments import FRAGMENT_CONTEXT
+
+    for side in (fragment["before"], fragment["after"]):
+        assert len(side) <= FRAGMENT_CONTEXT + 1, fragment
+        # Законные маски: звёздочки и не больше четырёх открытых цифр в конце.
+        assert not re.search(r"\d", re.sub(r"\*+\d{1,4}(?!\d)", "", side)), fragment
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("size", [None, 1, 7, 50, 200, 1000])
+def test_short_masks_do_not_pull_the_visible_zone_into_the_reserve(side: str, size) -> None:
+    """Видимая зона меряется в исходных символах окна, а не в символах после маскирования.
+
+    Две карты, записанные через пробел, дают маски вдвое короче себя; если отсчитывать
+    80 символов по замаскированному тексту, зона уезжает в запас и показывает цифры
+    карты, разрезанной краем окна.
+    """
+    assert is_iin(IIN_DRIFT)
+    text = _drift_text(side, 16)
+
+    found = _scan_chunks(text, size or len(text), IinBinDetector(), CardDetector())
+
+    [iin] = found["iin_bin"].fragments
+    _assert_only_masks_show_digits(iin)
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_short_masks_never_leak_at_any_gap(side: str) -> None:
+    for gap in range(0, 120):
+        found = _scan_chunks(_drift_text(side, gap), 10**6, IinBinDetector(), CardDetector())
+        for finding in found.values():
+            for fragment in finding.fragments:
+                _assert_only_masks_show_digits(fragment)

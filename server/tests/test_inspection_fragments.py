@@ -144,3 +144,76 @@ def test_not_at_document_start_marks_the_left_cut() -> None:
     fragment = _fragment(text, IIN, at_start=False)
 
     assert fragment["before"].startswith("…")
+
+
+class _ShortMask:
+    """Детектор с маской короче значения: «S» * 30 → `mask`.
+
+    Маска с пробелами показывает, что значение на краю зоны отброшено целиком, а не
+    заменено маской, которую потом срезало бы отбрасывание недорезанного слова.
+    """
+
+    key = "short"
+    max_length = 30
+    masks_hits = True
+
+    def __init__(self, mask: str = "M") -> None:
+        self.mask = mask
+
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
+        for match in re.finditer("S{30}", data[start:]):
+            if start + match.start() >= end:
+                return
+            yield self.mask, start + match.start(), start + match.end()
+
+
+def test_value_crossing_the_visible_zone_edge_is_dropped_whole() -> None:
+    # Окно слева — 99 символов, видимая зона — последние 80; «S»*30 начинается до неё.
+    window = "начало " + "S" * 30 + " " + "в" * 60 + " "
+    text = window + IIN + " конец"
+    start = len(window)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask("x y z")], True
+    )
+
+    assert fragment["before"] == "…" + "в" * 60 + " "
+    assert fragment["after"] == " конец"
+
+
+def test_value_crossing_the_right_zone_edge_is_dropped_whole() -> None:
+    text = "начало " + IIN + " " + "в" * 60 + " " + "S" * 30 + " конец"
+    start = text.index(IIN)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask("x y z")], True
+    )
+
+    assert fragment["before"] == "начало "
+    assert fragment["after"] == " " + "в" * 60 + "…"
+
+
+def test_value_inside_the_zone_is_masked_and_sides_stay_bounded() -> None:
+    text = "S" * 30 + " " + IIN + " " + "S" * 30 + " " + "я" * 200
+    start = text.index(IIN)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask()], True
+    )
+
+    assert fragment["before"] == "M "
+    # Справа видны 80 исходных символов: маска, пробел и 48 «я» — недорезанное слово отброшено.
+    assert fragment["after"] == " M…"
+
+
+def test_masks_are_never_longer_than_their_values() -> None:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    text = f"{IIN} 4111 1111 1111 1111 {VISA} 3782 822463 10005 №12345 " + " ".join(
+        "2200000000000004"
+    )
+    detectors = [*DETECTORS, RegexDetector("c", r"№\d+")]
+    for detector in detectors:
+        if detector.masks_hits:
+            for sample, start, end in detector.find(text, 0, len(text)):
+                assert len(sample) <= end - start, (detector.key, sample)

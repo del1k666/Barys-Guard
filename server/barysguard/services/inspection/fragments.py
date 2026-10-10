@@ -41,41 +41,77 @@ def _collapse(text: str) -> str:
     return _SPACES.sub(" ", text)
 
 
-def mask_text(text: str, detectors: Sequence["Detector"]) -> str:
-    """Заменяет маской все совпадения чувствительных детекторов в `text`."""
-    spans: list[tuple[int, int, str]] = []
+def _mask_spans(text: str, detectors: Sequence["Detector"]) -> list[tuple[int, int, str]]:
+    """Скрываемые участки текста: (начало, конец, маска), по возрастанию, без пересечений.
+
+    Пересекающиеся совпадения сливаются в один участок с маской первого: хвост за ним
+    не показывается ни текстом, ни маской, иначе часть более длинного значения осталась
+    бы открытой. Маска не длиннее своего участка (лишнее слева отрезается), чтобы фрагмент
+    не выходил за видимую длину.
+    """
+    found: list[tuple[int, int, str]] = []
     for detector in detectors:
         if not detector.masks_hits:
             continue
         for sample, start, end in detector.find(text, 0, len(text)):
             if sample:
-                spans.append((start, end, sample))
+                found.append((start, end, sample))
     # При общем начале первым идёт более длинное совпадение.
-    spans.sort(key=lambda span: (span[0], -span[1]))
-    parts: list[str] = []
-    position = 0
-    for start, end, sample in spans:
-        if start < position:
-            # Пересечение: хвост за уже выведенным не показываем (ни текстом, ни маской),
-            # иначе часть более длинного значения осталась бы открытой.
-            position = max(position, end)
+    found.sort(key=lambda span: (span[0], -span[1]))
+    spans: list[tuple[int, int, str]] = []
+    for start, end, sample in found:
+        if spans and start < spans[-1][1]:
+            first_start, first_end, first_sample = spans[-1]
+            spans[-1] = (first_start, max(first_end, end), first_sample)
             continue
-        parts.append(text[position:start])
-        parts.append(sample)
-        position = end
-    parts.append(text[position:])
-    return "".join(parts)
+        spans.append((start, end, sample))
+    return [(start, end, sample[-(end - start) :]) for start, end, sample in spans]
 
 
-# Видимая зона отсчитывается в исходных символах, до схлопывания пробелов: иначе текст
-# из одних пробелов и переводов строк растянул бы её на запас маскирования, где хвост
-# значения, начавшегося за окном, уже не узнаётся детектором. Поэтому в таком тексте
-# видно меньше FRAGMENT_CONTEXT символов.
+def mask_text(text: str, detectors: Sequence["Detector"]) -> str:
+    """Заменяет маской все совпадения чувствительных детекторов в `text`."""
+    visible, _ = _visible(text, _mask_spans(text, detectors), 0, len(text))
+    return visible
 
 
-def _clip_left(masked: str, more_before: bool) -> str:
-    cut = len(masked) > FRAGMENT_CONTEXT
-    text = _collapse(masked[-FRAGMENT_CONTEXT:])
+def _visible(
+    text: str, spans: Sequence[tuple[int, int, str]], low: int, high: int
+) -> tuple[str, bool]:
+    """Зона `text[low:high]` с масками вместо значений; второй результат — что-то отброшено.
+
+    Значение, целиком лежащее в зоне, заменяется маской. Значение, пересекающее край
+    зоны, отбрасывается целиком (ни текстом, ни маской): его часть за краем — запас
+    маскирования, а не видимый текст.
+    """
+    parts: list[str] = []
+    position = low
+    dropped = False
+    for start, end, sample in spans:
+        if end <= low or start >= high:
+            continue
+        parts.append(text[position : max(start, low)])
+        if start < low or end > high:
+            dropped = True
+        else:
+            parts.append(sample)
+        position = min(end, high)
+    parts.append(text[position:high])
+    return "".join(parts), dropped
+
+
+# Видимая зона — FRAGMENT_CONTEXT исходных символов окна у совпадения: не после
+# маскирования (маска бывает короче значения) и не после схлопывания пробелов. Иначе
+# зона уезжала бы в запас маскирования, где хвост значения, начавшегося за окном,
+# детектором уже не узнаётся. Поэтому в тексте с пробелами и масками видно меньше
+# FRAGMENT_CONTEXT символов. Маски не длиннее значений, схлопывание не удлиняет текст:
+# каждая сторона не длиннее FRAGMENT_CONTEXT + 1 (с «…»).
+
+
+def _clip_left(window: str, detectors: Sequence["Detector"], more_before: bool) -> str:
+    low = max(0, len(window) - FRAGMENT_CONTEXT)
+    visible, dropped = _visible(window, _mask_spans(window, detectors), low, len(window))
+    cut = low > 0 or dropped
+    text = _collapse(visible)
     if not (cut or more_before):
         return text
     if text.startswith(" "):
@@ -86,9 +122,11 @@ def _clip_left(masked: str, more_before: bool) -> str:
     return _ELLIPSIS + text
 
 
-def _clip_right(masked: str, more_after: bool) -> str:
-    cut = len(masked) > FRAGMENT_CONTEXT
-    text = _collapse(masked[:FRAGMENT_CONTEXT])
+def _clip_right(window: str, detectors: Sequence["Detector"], more_after: bool) -> str:
+    high = min(len(window), FRAGMENT_CONTEXT)
+    visible, dropped = _visible(window, _mask_spans(window, detectors), 0, high)
+    cut = high < len(window) or dropped
+    text = _collapse(visible)
     if not (cut or more_after):
         return text
     if text.endswith(" "):
@@ -123,11 +161,9 @@ def build_fragment(
     left = max(0, start - history)
     more_before = left > 0 or not at_doc_start
     more_after = len(data) > end + history
-    before = mask_text(data[left:start], detectors)
-    after = mask_text(data[end : end + history], detectors)
     hit = sample if masks_hits else _collapse(data[start:end])
     return {
-        "before": _clip_left(before, more_before),
+        "before": _clip_left(data[left:start], detectors, more_before),
         "hit": hit,
-        "after": _clip_right(after, more_after),
+        "after": _clip_right(data[end : end + history], detectors, more_after),
     }
