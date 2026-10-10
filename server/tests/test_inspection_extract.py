@@ -2,6 +2,7 @@
 
 import io
 import zipfile
+from collections.abc import Iterator
 
 import pytest
 from pypdf import PdfWriter
@@ -382,3 +383,91 @@ def test_pptx_line_break_inside_a_paragraph_separates_numbers() -> None:
     outcome = _scan("deck.pptx", _zip({"ppt/slides/slide1.xml": slide}))
 
     assert outcome.status == "ok" and outcome.findings["iin_bin"]["count"] == 2
+
+
+def _many_runs_docx(runs: int) -> bytes:
+    body = "".join(
+        f"<w:p><w:r><w:t>строка {index} </w:t></w:r><w:r><w:t>"
+        + (f"ИИН {IIN} гриф секретно" if index % 997 == 0 else "текст")
+        + "</w:t></w:r></w:p>"
+        for index in range(runs)
+    )
+    document = (
+        f'<?xml version="1.0"?><w:document xmlns:w="{W}"><w:body>{body}</w:body></w:document>'
+    )
+    return _zip({"word/document.xml": document})
+
+
+def _rich_detectors() -> list:
+    from barysguard.services.inspection.detectors import DictionaryDetector
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        IinBinDetector(),
+        CardDetector(),
+        DictionaryDetector("markings", ["секретно"]),
+        RegexDetector("line", r"строка \d+0 "),
+    ]
+
+
+def test_docx_with_many_small_runs_gives_the_same_findings_as_one_piece() -> None:
+    from barysguard.services.inspection.detectors import ContentScanner
+    from barysguard.services.inspection.extract import Deadline, extract
+
+    data = _many_runs_docx(5000)
+
+    outcome = scan_bytes("big.docx", data, _rich_detectors(), LIMITS)
+
+    text = "".join(extract("big.docx", data, LIMITS, Deadline(30.0)))
+    scanner = ContentScanner(_rich_detectors())
+    scanner.feed(text)
+    expected = {
+        key: {"count": f.count, "samples": f.samples, "fragments": f.fragments}
+        for key, f in scanner.finish().items()
+        if f.count
+    }
+    assert outcome.status == "ok"
+    assert outcome.findings == expected
+    assert outcome.findings["iin_bin"]["count"] == 6
+
+
+def test_scanner_is_fed_in_few_large_pieces(monkeypatch: pytest.MonkeyPatch) -> None:
+    from barysguard.services.inspection import engine
+    from barysguard.services.inspection.detectors import ContentScanner
+
+    pieces = ["ab", "\n"] * 25_000
+    feeds: list[int] = []
+    original = ContentScanner.feed
+
+    def spy(self: ContentScanner, chunk: str) -> None:
+        feeds.append(len(chunk))
+        original(self, chunk)
+
+    class _Stream:
+        truncated = False
+
+        def __iter__(self) -> Iterator[str]:
+            return iter(pieces)
+
+    monkeypatch.setattr(ContentScanner, "feed", spy)
+    monkeypatch.setattr(engine, "extract", lambda *args: _Stream())
+
+    outcome = engine.scan_bytes("a.docx", b"", DETECTORS, LIMITS)
+
+    assert outcome.status == "ok"
+    assert sum(feeds) == len("".join(pieces))
+    assert len(feeds) <= 5, len(feeds)
+
+
+def test_whitespace_only_pieces_still_mean_no_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    from barysguard.services.inspection import engine
+
+    class _Stream:
+        truncated = False
+
+        def __iter__(self) -> Iterator[str]:
+            return iter([" ", "\n", "\t"] * 20_000)
+
+    monkeypatch.setattr(engine, "extract", lambda *args: _Stream())
+
+    assert engine.scan_bytes("a.docx", b"", DETECTORS, LIMITS).status == "no_text"
