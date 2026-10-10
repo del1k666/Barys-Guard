@@ -1,5 +1,7 @@
 """Детекторы ИИН/БИН, карт и словаря; потоковое сканирование."""
 
+import re
+
 import pytest
 
 from barysguard.services.inspection.detectors import (
@@ -412,3 +414,27 @@ def test_fragments_with_long_masked_values_do_not_depend_on_chunk_size(size: int
         k: f.fragments for k, f in whole.items()
     }
     assert "tok" not in repr([f.fragments for f in whole.values()])
+
+
+SPACED_CARD = "4111 1111 1111 1111"
+
+
+@pytest.mark.parametrize("size", [None, 1, 7, 50, 200, 1000])
+def test_whitespace_heavy_window_does_not_show_the_tail_of_a_value(size: int | None) -> None:
+    """Видимая зона считается в исходных символах, а не после схлопывания пробелов.
+
+    Окно маскирования (120 символов) захватывает только хвост карты «1111 1111 1111»
+    (12 цифр — уже не карта), остальное — пробелы и переводы строк. После схлопывания
+    всё окно уместилось бы в 80 видимых символов, и хвост карты был бы показан.
+    """
+    gap = " \n" * 53  # 106 пробельных символов: окно = 14 символов карты + gap
+    text = f"начало {SPACED_CARD}{gap}{IIN_FIRST_PASS}{gap}{SPACED_CARD} конец"
+
+    found = _scan_chunks(text, size or len(text), IinBinDetector(), CardDetector())
+
+    [iin] = found["iin_bin"].fragments
+    assert iin == {"before": "…", "hit": "*" * 10 + IIN_FIRST_PASS[-2:], "after": "…"}
+    for finding in found.values():
+        for fragment in finding.fragments:
+            for side in (fragment["before"], fragment["after"]):
+                assert re.search(r"\d{4}", side) is None, fragment

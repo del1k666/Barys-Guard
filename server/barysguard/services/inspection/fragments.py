@@ -67,11 +67,15 @@ def mask_text(text: str, detectors: Sequence["Detector"]) -> str:
     return "".join(parts)
 
 
+# Видимая зона отсчитывается в исходных символах, до схлопывания пробелов: иначе текст
+# из одних пробелов и переводов строк растянул бы её на запас маскирования, где хвост
+# значения, начавшегося за окном, уже не узнаётся детектором. Поэтому в таком тексте
+# видно меньше FRAGMENT_CONTEXT символов.
+
+
 def _clip_left(masked: str, more_before: bool) -> str:
-    text = _collapse(masked)
-    cut = len(text) > FRAGMENT_CONTEXT
-    if cut:
-        text = text[-FRAGMENT_CONTEXT:]
+    cut = len(masked) > FRAGMENT_CONTEXT
+    text = _collapse(masked[-FRAGMENT_CONTEXT:])
     if not (cut or more_before):
         return text
     if text.startswith(" "):
@@ -83,10 +87,8 @@ def _clip_left(masked: str, more_before: bool) -> str:
 
 
 def _clip_right(masked: str, more_after: bool) -> str:
-    text = _collapse(masked)
-    cut = len(text) > FRAGMENT_CONTEXT
-    if cut:
-        text = text[:FRAGMENT_CONTEXT]
+    cut = len(masked) > FRAGMENT_CONTEXT
+    text = _collapse(masked[:FRAGMENT_CONTEXT])
     if not (cut or more_after):
         return text
     if text.endswith(" "):
