@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol, cast
 
-from barysguard.services.inspection.fragments import HISTORY, MAX_FRAGMENTS, build_fragment
+from barysguard.services.inspection.fragments import MAX_FRAGMENTS, build_fragment, history_for
 
 MAX_SAMPLES = 5
 
@@ -219,9 +219,10 @@ class ContentScanner:
     Порция склеивается с хвостом прошлой. Считаются только совпадения, начавшиеся
     до последних `overlap` символов (они гарантированно закончились внутри данных);
     остальное переходит в хвост вместе с одним символом контекста, чтобы
-    проверка «не часть более длинного числа» видела предыдущий символ, и ещё HISTORY
-    символами перед ним — левым контекстом фрагментов. Запас справа тоже больше на
-    HISTORY: у совпадения, засчитанного до конца текста, правый контекст уже в данных.
+    проверка «не часть более длинного числа» видела предыдущий символ, и ещё `history`
+    символами перед ним — окном фрагментов (history_for: видимый контекст плюс самое
+    длинное маскируемое значение). Запас справа тоже больше на `history`: у совпадения,
+    засчитанного до конца текста, правый контекст уже в данных.
     Каждый детектор продолжает поиск с конца своего последнего совпадения, даже если
     оно заходит в хвост.
     Текст не нормализуется: регистр учитывают сами детекторы.
@@ -229,7 +230,8 @@ class ContentScanner:
 
     def __init__(self, detectors: Sequence[Detector]) -> None:
         self._detectors = list(detectors)
-        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2 + HISTORY
+        self._history = history_for(self._detectors)
+        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2 + self._history
         self._carry = ""
         # Позиция в хвосте, с которой начинаются ещё не обработанные совпадения.
         self._context = 0
@@ -250,12 +252,12 @@ class ContentScanner:
             self._carry = data
             return
         cut = owned_end - 1  # последний засчитанный символ становится контекстом
-        keep_from = max(cut - HISTORY, 0)  # слева ещё HISTORY символов — для фрагментов
+        keep_from = max(cut - self._history, 0)  # слева ещё окно фрагментов
         for index, detector in enumerate(self._detectors):
             consumed = self._scan(index, detector, data, owned_end)
             self._resume[index] = max(consumed - keep_from, 0)
         self._carry = data[keep_from:]
-        # Позиция owned_end в новом хвосте; при keep_from > 0 это HISTORY + 1.
+        # Позиция owned_end в новом хвосте; при keep_from > 0 это history + 1.
         self._context = cut - keep_from + 1
         self._at_start = self._at_start and keep_from == 0
 
@@ -286,6 +288,7 @@ class ContentScanner:
                             detector.masks_hits,
                             self._detectors,
                             self._at_start,
+                            history=self._history,
                         )
                     )
             self._open[index] = not sample and match_end >= len(data)

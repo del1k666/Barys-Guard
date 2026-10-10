@@ -308,31 +308,66 @@ def test_fragments_do_not_depend_on_chunk_size(size: int) -> None:
     assert [len(f.fragments) for f in whole.values()] == [3, 2, 2, 2]
 
 
-def test_scanner_gives_full_left_history_to_every_fragment(monkeypatch) -> None:
-    """Контракт build_fragment: не в начале документа — слева не меньше HISTORY символов.
+def _long_key_detector() -> RegexDetector:
+    # Значение в 153 символа: длиннее прежнего запаса маскирования (40).
+    return RegexDetector("k", r"KEY(?: tok\d\d){25}")
 
-    Совпадения ставятся на разных расстояниях от начала, чтобы при любом размере
-    порции какое-то из них оказалось сразу за стыком.
+
+@pytest.mark.parametrize("with_long_regex", [False, True])
+def test_scanner_gives_full_left_history_to_every_fragment(monkeypatch, with_long_regex) -> None:
+    """Контракт build_fragment: не в начале документа — слева не меньше `history` символов.
+
+    `history` сканера считается по его детекторам. Совпадения ставятся на разных
+    расстояниях от начала и после вступлений разной длины (фрагментов собирается только
+    пять), чтобы при любом размере порции какие-то из них оказались сразу за стыком.
     """
     from barysguard.services.inspection import detectors as module
-    from barysguard.services.inspection.fragments import HISTORY
+    from barysguard.services.inspection.fragments import HISTORY, history_for
 
+    def make() -> list:
+        return [IinBinDetector(), *([_long_key_detector()] if with_long_regex else [])]
+
+    expected = history_for(make())
+    assert expected == (280 if with_long_regex else HISTORY)
     original = module.build_fragment
     calls: list[tuple[int, bool]] = []
 
-    def checked(data, start, end, sample, masks_hits, detectors, at_doc_start):
+    def checked(data, start, end, sample, masks_hits, detectors, at_doc_start, *, history):
         calls.append((start, at_doc_start))
-        assert at_doc_start or start >= HISTORY, (start, at_doc_start)
-        return original(data, start, end, sample, masks_hits, detectors, at_doc_start)
+        assert history == expected
+        assert at_doc_start or start >= history, (start, at_doc_start)
+        return original(
+            data, start, end, sample, masks_hits, detectors, at_doc_start, history=history
+        )
 
     monkeypatch.setattr(module, "build_fragment", checked)
-    text = "".join(f"{'ж' * gap} {IIN_FIRST_PASS} " for gap in range(0, 300, 23))
-    whole = _scan_chunks(text, len(text), IinBinDetector())
-    for size in (1, 2, 3, 5, 13, 64, 119, 120, 121, 133):
-        calls.clear()
-        chunked = _scan_chunks(text, size, IinBinDetector())
-        assert chunked["iin_bin"].fragments == whole["iin_bin"].fragments, size
-        assert any(not at_start for _, at_start in calls), size
+    spread = "".join(f"{'ж' * gap} {IIN_FIRST_PASS} " for gap in range(0, 300, 23))
+    for size in (1, 2, 3, 5, 13, 64, 119, 120, 121, 133, 279, 280, 281):
+        mid_stream = 0
+        for lead in (0, 150, 400, 900):
+            text = "ж" * lead + " " + spread
+            whole = _scan_chunks(text, len(text), *make())
+            calls.clear()
+            chunked = _scan_chunks(text, size, *make())
+            assert chunked["iin_bin"].fragments == whole["iin_bin"].fragments, (size, lead)
+            mid_stream += sum(not at_start for _, at_start in calls)
+        assert mid_stream > 0, size
+
+
+@pytest.mark.parametrize("size", [None, 1, 7, 50, 200, 1000])
+def test_long_masked_value_does_not_leak_into_a_neighbour_fragment(size: int | None) -> None:
+    tokens = [f"tok{index:02d}" for index in range(25)]
+    text = "intro " * 30 + "KEY " + " ".join(tokens) + " " + IIN_FIRST_PASS + " end"
+
+    found = _scan_chunks(text, size or len(text), _long_key_detector(), IinBinDetector())
+
+    [iin] = found["iin_bin"].fragments
+    [key] = found["k"].fragments
+    shown = repr([iin, key])
+    assert not any(token in shown for token in tokens), shown
+    # Маска длиннее видимых 80 символов и обрезана краем окна — от неё остаётся «…».
+    assert iin["before"] == "…"
+    assert key["after"] == " " + "*" * 10 + IIN_FIRST_PASS[-2:] + " end"
 
 
 def test_neighbour_values_stay_masked_across_chunk_boundaries() -> None:
@@ -351,3 +386,29 @@ def test_match_at_the_edges_of_the_document_has_no_false_ellipsis() -> None:
 
     assert result.fragments[0]["before"] == ""
     assert not result.fragments[0]["after"].endswith("…")
+
+
+@pytest.mark.parametrize("size", [1, 7, 50, 200, 279, 280, 281, 1000])
+def test_fragments_with_long_masked_values_do_not_depend_on_chunk_size(size: int) -> None:
+    key = "KEY " + " ".join(f"tok{index:02d}" for index in range(25))
+    text = (
+        FILLER
+        + f"{key} {IIN_FIRST_PASS} "
+        + FILLER
+        + f"{IIN_SECOND_PASS} затем {key} "
+        + FILLER
+        + f"{IIN_ZERO} "
+        + FILLER
+        # Второе длинное значение близко справа: оно задевает видимую часть окна первого
+        # и кончается далеко за ней — правого запаса должно хватить на него целиком.
+        + f"{key} {'ж' * 60} {key} "
+        + FILLER
+    )
+
+    whole = _scan_chunks(text, len(text), _long_key_detector(), IinBinDetector())
+    chunked = _scan_chunks(text, size, _long_key_detector(), IinBinDetector())
+
+    assert {k: f.fragments for k, f in chunked.items()} == {
+        k: f.fragments for k, f in whole.items()
+    }
+    assert "tok" not in repr([f.fragments for f in whole.values()])

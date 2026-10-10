@@ -16,13 +16,25 @@ if TYPE_CHECKING:
 
 FRAGMENT_CONTEXT = 80
 # Запас сверх видимого контекста: значение, начавшееся за краем окна, всё равно
-# находится детектором целиком и маскируется.
+# находится детектором целиком и маскируется. Это минимум: при более длинных значениях
+# маскирующих детекторов запас равен самому длинному из них (см. history_for).
 MASK_REACH = 40
 MAX_FRAGMENTS = 5
+# Окно по умолчанию (для вызовов без своих детекторов).
 HISTORY = FRAGMENT_CONTEXT + MASK_REACH
 
 _SPACES = re.compile(r"\s+")
 _ELLIPSIS = "…"
+
+
+def history_for(detectors: Sequence["Detector"]) -> int:
+    """Окно маскирования с каждой стороны совпадения для данного набора детекторов.
+
+    Значение маскирующего детектора, задевшее видимые FRAGMENT_CONTEXT символов, целиком
+    лежит в окне, поэтому находится детектором и маскируется, а не показывается хвостом.
+    """
+    reach = max((d.max_length for d in detectors if d.masks_hits), default=0)
+    return FRAGMENT_CONTEXT + max(MASK_REACH, reach)
 
 
 def _collapse(text: str) -> str:
@@ -93,20 +105,24 @@ def build_fragment(
     masks_hits: bool,
     detectors: Sequence["Detector"],
     at_doc_start: bool,
+    *,
+    history: int = HISTORY,
 ) -> dict[str, str]:
     """Фрагмент вокруг совпадения `data[start:end]`.
 
     `at_doc_start` — `data[0]` является началом документа (слева ничего нет).
 
+    `history` — окно маскирования с каждой стороны, обычно `history_for(detectors)`.
+
     Контракт вызывающего: `at_doc_start=False` означает, что слева от `start` передано
-    не меньше HISTORY символов, если текст там есть, то есть `data` не начинается посреди
+    не меньше `history` символов, если текст там есть, то есть `data` не начинается посреди
     значения, которое детектор мог бы не узнать. Защиты от обратного здесь нет.
     """
-    left = max(0, start - HISTORY)
+    left = max(0, start - history)
     more_before = left > 0 or not at_doc_start
-    more_after = len(data) > end + HISTORY
+    more_after = len(data) > end + history
     before = mask_text(data[left:start], detectors)
-    after = mask_text(data[end : end + HISTORY], detectors)
+    after = mask_text(data[end : end + history], detectors)
     hit = sample if masks_hits else _collapse(data[start:end])
     return {
         "before": _clip_left(before, more_before),
