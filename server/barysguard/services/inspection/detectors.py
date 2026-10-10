@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol, cast
 
+from barysguard.services.inspection.fragments import MAX_FRAGMENTS, build_fragment, history_for
+
 MAX_SAMPLES = 5
 
 _WEIGHTS_FIRST = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
@@ -85,6 +87,7 @@ def _card_network_ok(digits: str) -> bool:
 class Finding:
     count: int = 0
     samples: list[str] = field(default_factory=list)
+    fragments: list[dict[str, str]] = field(default_factory=list)
 
     def add(self, sample: str) -> None:
         self.count += 1
@@ -97,9 +100,12 @@ class Detector(Protocol):
     # Сколько символов от начала совпадения детектор может просмотреть (без учёта соседних
     # символов для проверки границ): столько текста сканер держит в запасе на стыке порций.
     max_length: int
+    # Значение совпадения чувствительно (ИИН, карта, шаблон): в контексте фрагментов такие
+    # совпадения заменяются маской. Словарные термины маски не требуют.
+    masks_hits: bool
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
-        """Настоящие совпадения, начавшиеся в [start, end): (маска образца, конец совпадения).
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
+        """Настоящие совпадения, начавшиеся в [start, end): (маска образца, начало, конец).
 
         Совпадения не пересекаются и идут по возрастанию начала; результат для позиции
         зависит только от текста вокруг неё, а не от того, откуда начат поиск.
@@ -117,30 +123,32 @@ class SkipsRest(Protocol):
 
 class IinBinDetector:
     max_length = 12
+    masks_hits = True
     pattern = re.compile(r"(?<!\d)\d{12}(?!\d)")
 
     def __init__(self, key: str = "iin_bin") -> None:
         self.key = key
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         for match in self.pattern.finditer(data, start):
             if match.start() >= end:
                 return
             number = match.group()
             if is_iin(number) or is_bin(number):
-                yield "*" * 10 + number[-2:], match.end()
+                yield "*" * 10 + number[-2:], match.start(), match.end()
 
 
 class CardDetector:
     # До 19 цифр и до 18 одиночных разделителей между ними.
     max_length = 37
+    masks_hits = True
     pattern = re.compile(r"(?<!\d)\d(?:[ -]?\d){12,18}(?!\d)")
     _group_start = re.compile(r"(?<=[ -])\d")
 
     def __init__(self, key: str = "card") -> None:
         self.key = key
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         position = start
         while True:
             match = self.pattern.search(data, position)
@@ -161,12 +169,12 @@ class CardDetector:
                 position = match.end()
                 continue
             yield hit
-            position = hit[1]
+            position = hit[2]
 
-    def _check(self, match: re.Match[str]) -> tuple[str, int] | None:
+    def _check(self, match: re.Match[str]) -> tuple[str, int, int] | None:
         digits = re.sub(r"\D", "", match.group())
         if luhn_ok(digits) and _card_network_ok(digits):
-            return "*" * (len(digits) - 4) + digits[-4:], match.end()
+            return "*" * (len(digits) - 4) + digits[-4:], match.start(), match.end()
         return None
 
 
@@ -183,6 +191,8 @@ def _term_pattern(term: str) -> str:
 
 
 class DictionaryDetector:
+    masks_hits = False
+
     def __init__(self, key: str, terms: Iterable[str]) -> None:
         self.key = key
         unique: dict[str, str] = {}
@@ -196,11 +206,11 @@ class DictionaryDetector:
         # Регистр и ё/е решает сам детектор: текст сканер не нормализует.
         self.pattern = re.compile(rf"(?<!\w)(?:{body})(?!\w)", re.IGNORECASE)
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         for match in self.pattern.finditer(data, start):
             if match.start() >= end:
                 return
-            yield normalize(" ".join(match.group().split())), match.end()
+            yield normalize(" ".join(match.group().split())), match.start(), match.end()
 
 
 class ContentScanner:
@@ -209,16 +219,24 @@ class ContentScanner:
     Порция склеивается с хвостом прошлой. Считаются только совпадения, начавшиеся
     до последних `overlap` символов (они гарантированно закончились внутри данных);
     остальное переходит в хвост вместе с одним символом контекста, чтобы
-    проверка «не часть более длинного числа» видела предыдущий символ. Каждый детектор
-    продолжает поиск с конца своего последнего совпадения, даже если оно заходит в хвост.
+    проверка «не часть более длинного числа» видела предыдущий символ, и ещё `history`
+    символами перед ним — окном фрагментов (history_for: видимый контекст плюс самое
+    длинное маскируемое значение). Запас справа тоже больше на `history`: у совпадения,
+    засчитанного до конца текста, правый контекст уже в данных.
+    Каждый детектор продолжает поиск с конца своего последнего совпадения, даже если
+    оно заходит в хвост.
     Текст не нормализуется: регистр учитывают сами детекторы.
     """
 
     def __init__(self, detectors: Sequence[Detector]) -> None:
         self._detectors = list(detectors)
-        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2
+        self._history = history_for(self._detectors)
+        self._overlap = max((d.max_length for d in self._detectors), default=0) + 2 + self._history
         self._carry = ""
+        # Позиция в хвосте, с которой начинаются ещё не обработанные совпадения.
         self._context = 0
+        # Хвост начинается с начала документа: слева от него ничего нет.
+        self._at_start = True
         # Позиция в хвосте, с которой каждый детектор продолжает поиск
         # (конец его прошлого совпадения, если оно зашло в хвост).
         self._resume = [0] * len(self._detectors)
@@ -233,12 +251,15 @@ class ContentScanner:
         if owned_end <= self._context:
             self._carry = data
             return
-        cut = owned_end - 1  # хвост начинается с символа контекста
+        cut = owned_end - 1  # последний засчитанный символ становится контекстом
+        keep_from = max(cut - self._history, 0)  # слева ещё окно фрагментов
         for index, detector in enumerate(self._detectors):
             consumed = self._scan(index, detector, data, owned_end)
-            self._resume[index] = max(consumed - cut, 0)
-        self._carry = data[cut:]
-        self._context = 1
+            self._resume[index] = max(consumed - keep_from, 0)
+        self._carry = data[keep_from:]
+        # Позиция owned_end в новом хвосте; при keep_from > 0 это history + 1.
+        self._context = cut - keep_from + 1
+        self._at_start = self._at_start and keep_from == 0
 
     def finish(self) -> dict[str, Finding]:
         for index, detector in enumerate(self._detectors):
@@ -253,9 +274,23 @@ class ContentScanner:
             skipper = cast(SkipsRest, detector)
             consumed = skipper.skip_rest(data, consumed)
         self._open[index] = self._open[index] and consumed >= len(data)
-        for sample, match_end in detector.find(data, max(self._context, consumed), end):
+        for sample, begin, match_end in detector.find(data, max(self._context, consumed), end):
             if sample:
-                self._findings[detector.key].add(sample)
+                finding = self._findings[detector.key]
+                finding.add(sample)
+                if len(finding.fragments) < MAX_FRAGMENTS:
+                    finding.fragments.append(
+                        build_fragment(
+                            data,
+                            begin,
+                            match_end,
+                            sample,
+                            detector.masks_hits,
+                            self._detectors,
+                            self._at_start,
+                            history=self._history,
+                        )
+                    )
             self._open[index] = not sample and match_end >= len(data)
             consumed = match_end
         return consumed

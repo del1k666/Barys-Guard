@@ -11,12 +11,19 @@ from barysguard.core.config import Settings
 from barysguard.services.inspection.detectors import ContentScanner, Detector
 from barysguard.services.inspection.extract import Deadline, ExtractFailure, Limits, extract
 
+# Порции извлечения бывают крошечными (прогон docx, ячейка xlsx, перевод строки), а каждая
+# подача сканеру — полный проход детекторов по хвосту в сотни символов. Поэтому порции
+# копятся до этого размера и подаются сканеру крупными кусками: результат скана от
+# разбиения текста не зависит.
+FEED_SIZE = 32 * 1024
+
 
 @dataclass(frozen=True)
 class ScanOutcome:
     status: str
     truncated: bool
-    # {rule_key: {"count": n, "samples": [...]}} — только ключи с ненулевым счётчиком.
+    # {rule_key: {"count": n, "samples": [...], "fragments": [...]}} —
+    # только ключи с ненулевым счётчиком.
     findings: dict[str, dict[str, Any]]
 
 
@@ -38,10 +45,19 @@ def scan_bytes(
         stream = extract(name, data, limits, deadline)
         scanner = ContentScanner(detectors)
         seen = 0
+        pending: list[str] = []
+        pending_size = 0
         for part in stream:
             seen += len(part.strip())
-            scanner.feed(part)
+            pending.append(part)
+            pending_size += len(part)
+            if pending_size >= FEED_SIZE:
+                scanner.feed("".join(pending))
+                pending.clear()
+                pending_size = 0
             deadline.check()
+        if pending:
+            scanner.feed("".join(pending))
         if seen == 0:
             return ScanOutcome("no_text", False, {})
         found = scanner.finish()
@@ -51,7 +67,7 @@ def scan_bytes(
         return ScanOutcome("error", False, {})
 
     findings = {
-        key: {"count": finding.count, "samples": finding.samples}
+        key: {"count": finding.count, "samples": finding.samples, "fragments": finding.fragments}
         for key, finding in found.items()
         if finding.count > 0
     }

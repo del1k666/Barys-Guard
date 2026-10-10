@@ -32,6 +32,8 @@ def compile_pattern(pattern: str, ignore_case: bool) -> Any:
 
 
 class RegexDetector:
+    masks_hits = True
+
     def __init__(
         self, key: str, pattern: str, ignore_case: bool = False, max_match: int = 200
     ) -> None:
@@ -55,7 +57,7 @@ class RegexDetector:
                 return int(earlier.end())
         return pos
 
-    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int]]:
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
         for match in self._pattern.finditer(data, start):
             if match.start() >= end:
                 return
@@ -66,6 +68,6 @@ class RegexDetector:
             # рассчитано на max_match), но поглощается: иначе его остаток после среза
             # порции или хвоста засчитался бы как короткое совпадение.
             if length > self._max_match:
-                yield "", match.end()
+                yield "", match.start(), match.end()
                 continue
-            yield mask_tail(match.group()), match.end()
+            yield mask_tail(match.group()), match.start(), match.end()

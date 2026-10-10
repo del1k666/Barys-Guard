@@ -23,6 +23,8 @@ export const ru = {
     loading: "Загрузка",
     retry: "Повторить",
     cancel: "Отмена",
+    // «Закрыть» уже значит закрыть инцидент: у кнопки панели своё имя.
+    closePanel: "Закрыть панель",
     none: "—",
   },
 
@@ -429,12 +431,25 @@ export const ru = {
       sha256: "SHA-256 файла",
       verdict: "Вердикт",
       verdictScore: (score: number) => `оценка ${score}`,
-      matches: "Совпадения",
-      matchesCaption: "Совпадения с правилами",
+      scoreRing: (score: number) => `Оценка ${score} из 100`,
       matchesEmpty: "Совпадений нет",
+      why: {
+        title: "Почему сработало",
+        summary: (score: number) => `Набрано ${score} из 100. Порог инцидента — 20.`,
+        formula: (weight: number, count: number, cap: number) =>
+          `${weight} × ${Math.min(count, cap)}`,
+        capped: (cap: number) => `учтено не больше ${cap} совпадений`,
+      },
+      evidence: {
+        title: "Что нашли в документе",
+        none: "Фрагменты недоступны: файл проверен до обновления.",
+        more: "Показать ещё",
+        less: "Свернуть",
+        shown: (shown: number, total: number) => `Показаны первые ${shown} из ${total}`,
+        matches: (count: number) => `совпадений: ${count}`,
+      },
       events: "События",
       eventsCaption: "События инцидента",
-      matchColumns: { rule: "Правило", count: "Число", points: "Баллы", samples: "Образцы" },
       eventColumns: { time: "Время", action: "Действие", path: "Путь назначения" },
     },
     rules: {

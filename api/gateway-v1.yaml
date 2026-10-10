@@ -3204,11 +3204,25 @@ components:
         points:
           type: integer
           title: Points
+        weight:
+          type: integer
+          title: Weight
+          default: 0
+        cap:
+          type: integer
+          title: Cap
+          default: 0
         samples:
           items:
             type: string
           type: array
           title: Samples
+        fragments:
+          items:
+            $ref: '#/components/schemas/MatchFragment'
+          type: array
+          title: Fragments
+          default: []
       type: object
       required:
       - rule_key
@@ -3351,6 +3365,23 @@ components:
       - username
       - password
       title: LoginRequest
+    MatchFragment:
+      properties:
+        before:
+          type: string
+          title: Before
+        hit:
+          type: string
+          title: Hit
+        after:
+          type: string
+          title: After
+      type: object
+      required:
+      - before
+      - hit
+      - after
+      title: MatchFragment
     NetUploadCollectorConfig:
       properties:
         enabled:

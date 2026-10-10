@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { ru } from "../i18n/ru";
 import styles from "./Modal.module.css";
 
 interface ModalProps {
@@ -9,12 +10,13 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  variant?: "dialog" | "drawer";
 }
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, title, onClose, children, footer }: ModalProps) {
+export function Modal({ open, title, onClose, children, footer, variant = "dialog" }: ModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   // Родитель обычно передаёт onClose стрелкой; если бы эффект зависел от
@@ -73,22 +75,40 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
 
   return createPortal(
     <div
-      className={styles.overlay}
+      className={`${styles.overlay} ${variant === "drawer" ? styles.drawerOverlay : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeRef.current();
       }}
     >
       <div
         ref={dialogRef}
-        className={styles.dialog}
+        className={`${styles.dialog} ${variant === "drawer" ? styles.drawer : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
       >
-        <h2 id={titleId} className={styles.title}>
-          {title}
-        </h2>
+        {variant === "drawer" ? (
+          // На узком экране панель занимает всё окно и нажать мимо неё нельзя.
+          <div className={styles.header}>
+            <h2 id={titleId} className={styles.title}>
+              {title}
+            </h2>
+            <button
+              type="button"
+              className={styles.close}
+              aria-label={ru.common.closePanel}
+              title={ru.common.closePanel}
+              onClick={() => closeRef.current()}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        ) : (
+          <h2 id={titleId} className={styles.title}>
+            {title}
+          </h2>
+        )}
         <div className={styles.body}>{children}</div>
         {footer ? <div className={styles.footer}>{footer}</div> : null}
       </div>

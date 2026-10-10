@@ -36,6 +36,7 @@
   border-radius: var(--radius);
   color: var(--text);
   text-decoration: none;
+  transition: background var(--dur-fast);
 }
 
 .link:hover {
@@ -43,9 +44,10 @@
 }
 
 .active {
-  background: var(--info-bg);
-  color: var(--info);
+  background: var(--accent-soft);
+  color: var(--text);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .account {
@@ -124,4 +126,8 @@
   .content {
     padding: 20px 16px;
   }
+}
+
+.page {
+  animation: fade-up var(--dur-slow) var(--ease-out);
 }

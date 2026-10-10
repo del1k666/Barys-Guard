@@ -11,7 +11,15 @@ import (
 func DefaultServices() []Service {
 	return []Service{
 		{Key: "gdrive", Name: "Google Drive",
-			Domains: []string{"drive.google.com", "docs.google.com", "drive.usercontent.google.com"}},
+			Domains: []string{"drive.google.com", "docs.google.com", "drive.usercontent.google.com"},
+			// Запасной путь: имя уже в кэше DNS ОС (нового ответа агент не видит)
+			// или браузер резолвит через DoH. Диапазоны шире Drive, но срабатывают
+			// только на отправку прочитанного документа.
+			CIDRs: []string{
+				"142.250.0.0/15", "172.217.0.0/16", "216.58.192.0/19", "74.125.0.0/16",
+				"173.194.0.0/16", "108.177.0.0/17", "209.85.128.0/17", "64.233.160.0/19",
+				"2607:f8b0::/32", "2a00:1450::/32",
+			}},
 		{Key: "dropbox", Name: "Dropbox",
 			Domains: []string{"dropbox.com", "dropboxapi.com", "dropboxusercontent.com"}},
 		{Key: "onedrive", Name: "OneDrive / SharePoint",

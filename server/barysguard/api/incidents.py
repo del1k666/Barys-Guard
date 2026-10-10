@@ -16,6 +16,7 @@ from barysguard.api.schemas import (
     IncidentPage,
     IncidentStatusUpdate,
     IncidentSummary,
+    MatchFragment,
     VerdictSummary,
 )
 from barysguard.db.models.agent import Agent
@@ -168,7 +169,10 @@ async def _detail(session: AsyncSession, incident: Incident, hostname: str) -> I
                 rule_title=m.get("rule_title", ""),
                 count=m["count"],
                 points=m["points"],
+                weight=m.get("weight", 0),
+                cap=m.get("cap", 0),
                 samples=m.get("samples", []),
+                fragments=[MatchFragment(**fragment) for fragment in m.get("fragments", [])],
             )
             for m in (best.matches if best else [])
         ],

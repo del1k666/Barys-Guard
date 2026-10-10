@@ -34,7 +34,11 @@ var agentVersion = "0.1.0"
 const exitRevoked = 2
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	var level slog.LevelVar
+	if raw := os.Getenv("BG_LOG_LEVEL"); raw != "" {
+		_ = level.UnmarshalText([]byte(raw))
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: &level})))
 
 	if len(os.Args) < 2 {
 		usage()

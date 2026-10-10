@@ -1,0 +1,440 @@
+"""Фрагменты вокруг находок: маскирование контекста и обрезка краёв."""
+
+import random
+import re
+from collections.abc import Iterator
+
+import pytest
+
+from barysguard.services.inspection.detectors import (
+    CardDetector,
+    DictionaryDetector,
+    IinBinDetector,
+)
+from barysguard.services.inspection.fragments import (
+    FRAGMENT_CONTEXT,
+    build_fragment,
+    mask_text,
+)
+
+IIN = "900101300017"
+IIN_OTHER = "900101300811"
+VISA = "4111111111111111"
+DETECTORS = [IinBinDetector(), CardDetector(), DictionaryDetector("markings", ["конфиденциально"])]
+
+
+def _fragment(text: str, needle: str, masks: bool = True, at_start: bool = True) -> dict[str, str]:
+    start = text.index(needle)
+    end = start + len(needle)
+    sample = "*" * 10 + needle[-2:] if masks else needle.lower()
+    return build_fragment(text, start, end, sample, masks, DETECTORS, at_start)
+
+
+def test_mask_text_replaces_other_values_but_keeps_dictionary_terms() -> None:
+    text = f"ИИН {IIN_OTHER}, карта 4111 1111 1111 1111, гриф конфиденциально"
+
+    masked = mask_text(text, DETECTORS)
+
+    assert IIN_OTHER not in masked
+    assert "4111 1111" not in masked
+    assert "конфиденциально" in masked
+
+
+def test_hit_is_the_mask_and_context_is_masked() -> None:
+    text = f"Сотрудник {IIN} вместе с {IIN_OTHER} и картой {VISA} в списке."
+
+    fragment = _fragment(text, IIN)
+
+    assert fragment["hit"] == "*" * 10 + "17"
+    joined = fragment["before"] + fragment["hit"] + fragment["after"]
+    assert IIN not in joined and IIN_OTHER not in joined and VISA not in joined
+    assert not re.search(r"\d{6,}", joined)
+    assert "в списке" in fragment["after"]
+
+
+def test_dictionary_hit_keeps_original_case() -> None:
+    text = "Документ имеет гриф КОНФИДЕНЦИАЛЬНО и не подлежит выдаче."
+
+    fragment = _fragment(text, "КОНФИДЕНЦИАЛЬНО", masks=False)
+
+    assert fragment["hit"] == "КОНФИДЕНЦИАЛЬНО"
+    assert fragment["before"].endswith("гриф ")
+
+
+def test_edges_of_the_document_have_no_ellipsis() -> None:
+    text = f"{IIN} в начале и конце {IIN_OTHER}"
+
+    first = _fragment(text, IIN)
+
+    assert first["before"] == ""
+    assert not first["after"].endswith("…")
+
+
+def test_cut_context_drops_the_partial_word_and_marks_the_cut() -> None:
+    filler = "слово " * 40
+    text = f"{filler}{IIN} {filler}"
+
+    fragment = _fragment(text, IIN)
+
+    assert fragment["before"].startswith("…")
+    assert fragment["after"].endswith("…")
+    assert len(fragment["before"]) <= FRAGMENT_CONTEXT + 1
+    assert len(fragment["after"]) <= FRAGMENT_CONTEXT + 1
+
+
+def test_number_cut_by_the_window_edge_is_not_shown() -> None:
+    # Число внутри окна истории, но через левый край видимых 80 символов.
+    for value in (IIN_OTHER, "4111 1111 1111 1111"):
+        for gap in range(70, 95):
+            text = "а" * 150 + f" {value} " + "б" * gap + f" {IIN} " + "в" * 200
+
+            fragment = _fragment(text, IIN)
+
+            assert not re.search(r"\d{6,}", fragment["before"]), (value, gap)
+            assert not re.search(r"\d{4} \d{4}", fragment["before"]), (value, gap)
+
+
+def test_number_cut_by_the_right_window_edge_is_not_shown() -> None:
+    for value in (IIN_OTHER, "4111 1111 1111 1111"):
+        for gap in range(70, 95):
+            text = "а" * 50 + f" {IIN} " + "б" * gap + f" {value} " + "в" * 200
+
+            fragment = _fragment(text, IIN)
+
+            assert not re.search(r"\d{6,}", fragment["after"]), (value, gap)
+            assert not re.search(r"\d{4} \d{4}", fragment["after"]), (value, gap)
+
+
+class _Span:
+    """Заглушка детектора с заданными совпадениями."""
+
+    key = "stub"
+    max_length = 100
+    masks_hits = True
+
+    def __init__(self, *spans: tuple[str, int, int]) -> None:
+        self._spans = spans
+
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
+        yield from self._spans
+
+
+def test_mask_text_shared_start_keeps_only_the_longer_mask() -> None:
+    text = "900101300017 1234 5678 9012 конец"
+    short = _Span(("SHORT", 0, 12))
+    long = _Span(("LONG", 0, 27))
+
+    for detectors in ([short, long], [long, short]):
+        masked = mask_text(text, detectors)  # type: ignore[arg-type]
+
+        assert masked == "LONG конец"
+
+
+def test_mask_text_partial_overlap_swallows_the_tail() -> None:
+    text = "900101300017 1234 5678 9012 конец"
+    first = _Span(("AAA", 0, 12))
+    second = _Span(("BBB", 5, 27))
+
+    masked = mask_text(text, [first, second])  # type: ignore[arg-type]
+
+    assert masked == "AAA конец"
+    assert not re.search(r"\d{4}", masked)
+
+
+def test_not_at_document_start_marks_the_left_cut() -> None:
+    text = f"середина {IIN} дальше"
+
+    fragment = _fragment(text, IIN, at_start=False)
+
+    assert fragment["before"].startswith("…")
+
+
+class _ShortMask:
+    """Детектор с маской короче значения: «S» * 30 → `mask`.
+
+    Маска с пробелами показывает, что значение на краю зоны отброшено целиком, а не
+    заменено маской, которую потом срезало бы отбрасывание недорезанного слова.
+    """
+
+    key = "short"
+    max_length = 30
+    masks_hits = True
+
+    def __init__(self, mask: str = "M") -> None:
+        self.mask = mask
+
+    def find(self, data: str, start: int, end: int) -> Iterator[tuple[str, int, int]]:
+        for match in re.finditer("S{30}", data[start:]):
+            if start + match.start() >= end:
+                return
+            yield self.mask, start + match.start(), start + match.end()
+
+
+def test_value_crossing_the_visible_zone_edge_is_dropped_whole() -> None:
+    # Окно слева — 99 символов, видимая зона — последние 80; «S»*30 начинается до неё.
+    window = "начало " + "S" * 30 + " " + "в" * 60 + " "
+    text = window + IIN + " конец"
+    start = len(window)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask("x y z")], True
+    )
+
+    assert fragment["before"] == "…" + "в" * 60 + " "
+    assert fragment["after"] == " конец"
+
+
+def test_value_crossing_the_right_zone_edge_is_dropped_whole() -> None:
+    text = "начало " + IIN + " " + "в" * 60 + " " + "S" * 30 + " конец"
+    start = text.index(IIN)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask("x y z")], True
+    )
+
+    assert fragment["before"] == "начало "
+    assert fragment["after"] == " " + "в" * 60 + "…"
+
+
+def test_value_inside_the_zone_is_masked_and_sides_stay_bounded() -> None:
+    text = "S" * 30 + " " + IIN + " " + "S" * 30 + " " + "я" * 200
+    start = text.index(IIN)
+
+    fragment = build_fragment(
+        text, start, start + len(IIN), "*" * 10 + "17", True, [_ShortMask()], True
+    )
+
+    assert fragment["before"] == "M "
+    # Справа видны 80 исходных символов: маска, пробел и 48 «я» — недорезанное слово отброшено.
+    assert fragment["after"] == " M…"
+
+
+def test_masks_are_never_longer_than_their_values() -> None:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    text = f"{IIN} 4111 1111 1111 1111 {VISA} 3782 822463 10005 №12345 " + " ".join(
+        "2200000000000004"
+    )
+    detectors = [*DETECTORS, RegexDetector("c", r"№\d+")]
+    for detector in detectors:
+        if detector.masks_hits:
+            for sample, start, end in detector.find(text, 0, len(text)):
+                assert len(sample) <= end - start, (detector.key, sample)
+
+
+def _scrub(text: str, open_start: bool = False, open_end: bool = False) -> str:
+    from barysguard.services.inspection.fragments import scrub_digits
+
+    return scrub_digits(text, open_start=open_start, open_end=open_end)
+
+
+def test_scrubber_keeps_mask_tails_and_short_numbers() -> None:
+    text = "карта ****1111 и ИИН **********07, дом 12, кв 1234"
+
+    assert _scrub(text) == text
+
+
+def test_scrubber_removes_five_or_more_digits_with_any_separators() -> None:
+    assert _scrub("а 12345 б") == "а • б"
+    assert _scrub("а 1234 б") == "а 1234 б"
+    assert _scrub("а 1 2 3 4 б") == "а 1 2 3 4 б"
+    assert _scrub("а 1 2 3 4 5 б") == "а • б"
+    assert _scrub("а 12-34–56 б") == "а • б"
+    assert _scrub("а 12\u00a034\u20285\t6  7 б") == "а • б"
+    assert _scrub("а 4111\u200b1111\u200b1111\u200b1111 б") == "а • б"
+    assert _scrub("а 4111.1111/1111_1111 б") == "а • б"
+
+
+def test_scrubber_removes_plain_digits_next_to_a_mask_tail() -> None:
+    # Хвост маски вместе с соседними цифрами — уже пять цифр: убирается весь отрезок.
+    assert _scrub("а ****1111 2 б") == "а ****• б"
+    assert _scrub("а **********07-123 б") == "а **********• б"
+    # Цифры вплотную перед маской — голова значения, начало которого не нашлось.
+    assert _scrub("а 12****3456 б") == "а •****3456 б"
+
+
+def test_scrubber_removes_any_digits_touching_an_open_edge() -> None:
+    assert _scrub("12 3 слово", open_start=True) == "• слово"
+    assert _scrub("- 1 слово", open_start=True) == "- • слово"
+    assert _scrub("слово 22-0-", open_end=True) == "слово •-"
+    assert _scrub("слово ****1111 ", open_end=True) == "слово ****• "
+    # Закрытый край ничего не меняет.
+    assert _scrub("12 3 слово 22-0-") == "12 3 слово 22-0-"
+
+
+def test_scrubber_never_lengthens_text() -> None:
+    for text in ("1", "1 2 3 4 5 6", "x9", "****1111 2", "1-2-3"):
+        for flags in ((False, False), (True, True)):
+            assert len(_scrub(text, *flags)) <= len(text)
+
+
+def test_fragment_hides_numbers_at_the_hit_and_at_the_cut() -> None:
+    # Справа видны 80 исходных символов: « 3 текст », 67 «б» и « 12 »; дальше « 34…».
+    text = (
+        "а" * 200 + " начало 7 77 слово 1 2-" + IIN + " 3 текст " + "б" * 67 + " 12 34" + "в" * 200
+    )
+    start = text.index(IIN)
+
+    fragment = build_fragment(text, start, start + len(IIN), "*" * 10 + "17", True, DETECTORS, True)
+
+    assert fragment["before"] == "…начало 7 77 слово •-"
+    # Короткие числа у совпадения и у обреза могли продолжаться — убраны; «7 77» в середине — нет.
+    assert fragment["after"] == " • текст " + "б" * 67 + " •…"
+
+
+# --- Значение, пересекающее совпадение, не видно ни слева, ни справа ---------------------
+
+
+def _scan_fragments(text: str, size: int | None, detectors: list) -> dict[str, list]:
+    from barysguard.services.inspection.detectors import ContentScanner
+
+    scanner = ContentScanner(detectors)
+    step = size or len(text)
+    for index in range(0, len(text), step):
+        scanner.feed(text[index : index + step])
+    return {key: found.fragments for key, found in scanner.finish().items() if found.count}
+
+
+def _email_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        RegexDetector("email", r"[a-z.]+@company\.kz"),
+        DictionaryDetector("dict", ["company"]),
+    ]
+
+
+def _key_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        RegexDetector("key", r"[A-Z]{4}-[A-Z]{4}-[A-Z]{4}"),
+        RegexDetector("dom", r"-QRST-"),
+    ]
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_value_straddling_a_dictionary_hit_is_not_shown_around_it(size: int | None) -> None:
+    text = "Отправьте ivan.petrov@company.kz срочно, " + "слово " * 60
+
+    found = _scan_fragments(text, size, _email_detectors())
+
+    shown = repr(found)
+    assert "ivan.petrov" not in shown and "petrov" not in shown, shown
+    assert ".kz" not in shown.replace("**kz", ""), shown
+    [term] = found["dict"]
+    assert term["hit"] == "company"
+    assert term["before"] == "Отправьте …"
+    assert term["after"].startswith("… срочно, слово ")
+    assert term["after"].endswith("…")
+    assert len(term["after"]) <= FRAGMENT_CONTEXT + 1
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_value_straddling_a_regex_hit_is_not_shown_around_it(size: int | None) -> None:
+    text = "ключ WXYZ-QRST-MNOP выдан"
+
+    found = _scan_fragments(text, size, _key_detectors())
+
+    shown = repr(found)
+    assert "WXYZ" not in shown and "MNOP" not in shown, shown
+    [dom] = found["dom"]
+    assert dom == {"before": "ключ …", "hit": "****T-", "after": "… выдан"}
+
+
+_FUZZ_WORDS = ("договор", "сумма", "клиент", "адрес", "счёт", "дата", "и", "в")
+
+
+def _fuzz_value(rng: random.Random) -> str:
+    if rng.random() < 0.5:
+        name = "".join(rng.choice("abcdefghijklmnopqrstuvwxyz.") for _ in range(rng.randint(1, 14)))
+        return name + "@company.kz"
+    groups = rng.choice((3, 3, 6))
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    return "-".join("".join(rng.choice(letters) for _ in range(4)) for _ in range(groups))
+
+
+def _fuzz_text(rng: random.Random) -> str:
+    parts: list[str] = []
+    for _ in range(rng.randint(2, 7)):
+        roll = rng.random()
+        if roll < 0.15:
+            parts.append(" ".join(rng.choice(_FUZZ_WORDS) for _ in range(rng.randint(40, 90))))
+        elif roll < 0.6:
+            parts.append(" ".join(rng.choice(_FUZZ_WORDS) for _ in range(rng.randint(0, 5))))
+        # Значения вплотную друг к другу и к словам, без пробела, — тоже проверяются.
+        parts.append(_fuzz_value(rng))
+        if rng.random() < 0.3:
+            parts.append(_fuzz_value(rng))
+    joiners = (" ", " ", " ", "", ", ")
+    return "".join(part + rng.choice(joiners) for part in parts)
+
+
+def _fuzz_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        *_email_detectors(),
+        RegexDetector("key", r"[A-Z]{4}-[A-Z]{4}-[A-Z]{4}"),
+        RegexDetector("dom", r"-[A-Z]{4}-"),
+        IinBinDetector(),
+    ]
+
+
+def _grams(text: str) -> set[str]:
+    return {text[index : index + 4] for index in range(len(text) - 3)}
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_fuzz_no_part_of_a_masked_value_is_shown_in_the_context(size: int | None) -> None:
+    rng = random.Random(20261010)  # noqa: S311 - воспроизводимый перебор, не секрет
+    for case in range(120):
+        text = _fuzz_text(rng)
+        detectors = _fuzz_detectors()
+        secret: set[str] = set()
+        for detector in detectors:
+            if detector.masks_hits:
+                for sample, start, end in detector.find(text, 0, len(text)):
+                    if sample:
+                        secret |= _grams(text[start:end])
+
+        found = _scan_fragments(text, size, detectors)
+
+        for key, fragments in found.items():
+            for fragment in fragments:
+                for side in ("before", "after"):
+                    leaked = _grams(fragment[side]) & secret
+                    assert not leaked, (case, key, side, fragment, text)
+
+
+def _stub_fragment(text: str, hit: str, *spans: tuple[str, int, int]) -> dict[str, str]:
+    # Текст короче окна и в начале документа: позиции окна совпадают с позициями текста.
+    start = text.index(hit)
+    return build_fragment(text, start, start + len(hit), hit, False, [_Span(*spans)], True)
+
+
+def test_value_touching_the_hit_is_masked_not_hidden() -> None:
+    text = "раз AAAAhitBBBB два"
+
+    fragment = _stub_fragment(text, "hit", ("**AA", 4, 8), ("**BB", 11, 15))
+
+    assert fragment == {"before": "раз **AA", "hit": "hit", "after": "**BB два"}
+
+
+def test_values_straddling_both_edges_of_the_hit_are_hidden_on_both_sides() -> None:
+    text = "раз AAAAhitBBBB два"
+
+    fragment = _stub_fragment(text, "hit", ("**AA", 4, 9), ("**BB", 10, 15))
+
+    assert fragment == {"before": "раз …", "hit": "hit", "after": "… два"}
+
+
+def test_value_straddling_the_hit_and_the_zone_edge_leaves_one_marker() -> None:
+    lead = "н" * 150 + " "
+    text = lead + "V" * 100 + "hit" + " конец"
+    start = len(lead)
+
+    fragment = _stub_fragment(text, "hit", ("**VV", start, start + 101))
+
+    assert fragment["before"] == "…"
+    assert fragment["after"] == " конец"

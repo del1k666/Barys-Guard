@@ -11,6 +11,7 @@ package netupload
 //     чистый IP, порт отдельным свойством; 11/43 — приём;
 //   - DNS-Client: 3008 — QueryName и QueryResults вида "142.251.20.94;"
 //     (CNAME-формат "type:  5 host;" код тоже разбирает).
+//
 // Не проверено вживую: полный сценарий выгрузки файла в браузере и Telegram
 // (раздел 6 docs/NETWORK_UPLOAD.md).
 const (

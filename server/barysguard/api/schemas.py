@@ -338,12 +338,21 @@ class IncidentPage(BaseModel):
     next_cursor: str | None
 
 
+class MatchFragment(BaseModel):
+    before: str
+    hit: str
+    after: str
+
+
 class IncidentMatch(BaseModel):
     rule_key: str
     rule_title: str = ""
     count: int
     points: int
+    weight: int = 0
+    cap: int = 0
     samples: list[str]
+    fragments: list[MatchFragment] = []
 
 
 class IncidentEventRef(BaseModel):

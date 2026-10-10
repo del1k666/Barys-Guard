@@ -279,7 +279,15 @@ func launchETW(dispatch func(rawEvent)) (*session, error) {
 			Filter: []uint16{idDNSQueryDone}},
 	}
 	for _, provider := range providers {
-		if err := rt.EnableProvider(provider); err != nil {
+		err := rt.EnableProvider(provider)
+		if err != nil && len(provider.Filter) > 0 {
+			// Фильтр по идентификаторам событий на стороне ETW — лишь оптимизация
+			// (Kernel-File отвечает «The parameter is incorrect»): лишнее всё
+			// равно отбрасывает EventRecordCallback.
+			provider.Filter = nil
+			err = rt.EnableProvider(provider)
+		}
+		if err != nil {
 			_ = rt.Stop()
 			return nil, fmt.Errorf("сессия ETW, провайдер %s: %w", provider.Name, err)
 		}

@@ -16,6 +16,7 @@
   border-left-width: 4px;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  animation: slide-in-right var(--dur-mid) var(--ease-out);
 }
 
 .ok {

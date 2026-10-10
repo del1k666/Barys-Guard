@@ -68,7 +68,10 @@ def test_matches_carry_rule_version_and_masked_samples() -> None:
             "rule_version_id": "v-mark",
             "count": 1,
             "points": 15,
+            "weight": 15,
+            "cap": 2,
             "samples": ["***"],
+            "fragments": [],
         }
     ]
     assert result.status == "clean"  # 15 < 20
@@ -85,3 +88,19 @@ def test_matches_carry_the_rule_title() -> None:
 
 def test_findings_of_unknown_rules_are_ignored() -> None:
     assert evaluate(_findings(other=3), WEIGHTS).score == 0
+
+
+def test_matches_carry_weight_cap_and_fragments() -> None:
+    fragment = {"before": "до ", "hit": "**********17", "after": " после"}
+    findings = {"iin_bin": {"count": 2, "samples": ["**********17"], "fragments": [fragment]}}
+
+    [match] = evaluate(findings, WEIGHTS).matches
+
+    assert match["weight"] == 20 and match["cap"] == 5
+    assert match["fragments"] == [fragment]
+
+
+def test_matches_without_fragments_get_an_empty_list() -> None:
+    [match] = evaluate({"card": {"count": 1, "samples": ["***"]}}, WEIGHTS).matches
+
+    assert match["fragments"] == []

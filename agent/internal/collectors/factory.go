@@ -30,17 +30,21 @@ type Platform struct {
 	NetSource netupload.Source
 	// ProcessInfo определяет процесс по PID для события отправки.
 	ProcessInfo func(pid uint32) map[string]any
+	// ProcessFamily приводит PID к главному процессу приложения (у браузеров
+	// файл читает один процесс, а отправляет дочерний).
+	ProcessFamily func(pid uint32) uint32
 }
 
 func DefaultPlatform() Platform {
 	return Platform{
-		Supported:    runtime.GOOS == "windows",
-		Provider:     volumes.NewProvider(),
-		Identity:     identity.New(),
-		Attributor:   filewatch.NewAttributor(),
-		StartWatcher: filewatch.DefaultStartWatcher,
-		NetSource:    netupload.NewSource(),
-		ProcessInfo:  netupload.ProcessInfo,
+		Supported:     runtime.GOOS == "windows",
+		Provider:      volumes.NewProvider(),
+		Identity:      identity.New(),
+		Attributor:    filewatch.NewAttributor(),
+		StartWatcher:  filewatch.DefaultStartWatcher,
+		NetSource:     netupload.NewSource(),
+		ProcessInfo:   netupload.ProcessInfo,
+		ProcessFamily: netupload.ProcessFamily,
 		Profiles: func() []string {
 			return filewatch.ProfileDirs(os.Getenv("SystemDrive") + `\Users`)
 		},
@@ -99,7 +103,7 @@ func Build(document map[string]any, dataDir string, plat Platform) []events.Coll
 	if useNet {
 		list = append(list, netupload.New(netupload.Deps{
 			Config: netCfg, Source: plat.NetSource, Stager: plat.Stager,
-			Identity: plat.Identity, ProcessInfo: plat.ProcessInfo, Volumes: hub.Current,
+			Identity: plat.Identity, ProcessInfo: plat.ProcessInfo, Family: plat.ProcessFamily, Volumes: hub.Current,
 		}))
 	}
 	return list

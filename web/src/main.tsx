@@ -6,6 +6,15 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { SessionProvider } from "./app/session";
 import { ToastProvider } from "./components/Toast";
+import "@fontsource/ibm-plex-sans/cyrillic-400.css";
+import "@fontsource/ibm-plex-sans/cyrillic-500.css";
+import "@fontsource/ibm-plex-sans/cyrillic-600.css";
+import "@fontsource/ibm-plex-sans/latin-400.css";
+import "@fontsource/ibm-plex-sans/latin-500.css";
+import "@fontsource/ibm-plex-sans/latin-600.css";
+import "@fontsource/jetbrains-mono/cyrillic-400.css";
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/latin-500.css";
 import "./styles/global.css";
 
 // Повторы по умолчанию скрыли бы сбой на три попытки; оператор нажмёт «Повторить».

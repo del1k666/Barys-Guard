@@ -22,12 +22,22 @@ MATCHES = [
         "count": 2,
         "points": 40,
         "samples": ["**********17"],
+        "weight": 20,
+        "cap": 5,
+        "fragments": [{"before": "ИИН ", "hit": "**********17", "after": " в списке"}],
     }
 ]
 
 
 async def _flagged(
-    session, agent_id, *, user="PC\\ivanov", at=None, score=75, severity="high"
+    session,
+    agent_id,
+    *,
+    user="PC\\ivanov",
+    at=None,
+    score=75,
+    severity="high",
+    matches=MATCHES,
 ) -> Incident:
     event = Event(
         occurred_at=at or datetime.now(UTC),
@@ -51,7 +61,7 @@ async def _flagged(
         reason=None,
         score=score,
         severity=severity,
-        matches=MATCHES,
+        matches=matches,
     )
     incident = await apply_verdict(session, event, verdict)
     await session.commit()
@@ -73,6 +83,29 @@ async def test_incidents_are_listed_newest_first_with_hostname(app_client, sessi
     assert items[0]["hostname"] == "ws-1"
     assert items[0]["status"] == "open" and items[0]["severity"] == "high"
     assert response.json()["next_cursor"] is None
+
+
+async def test_list_does_not_expose_matches_or_fragments(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-nofrag", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-nofrag")
+    secret = [
+        {
+            **MATCHES[0],
+            "samples": ["*******SAMPLE-MARK"],
+            "fragments": [{"before": "BEFORE-MARK ", "hit": "HIT-MARK", "after": " AFTER-MARK"}],
+        }
+    ]
+    await _flagged(session, agent.agent_id, matches=secret)
+
+    response = await app_client.get("/api/v1/incidents")
+
+    assert response.status_code == 200, response.text
+    items = response.json()["items"]
+    assert items
+    for item in items:
+        assert "matches" not in item and "fragments" not in item
+    for mark in ("SAMPLE-MARK", "BEFORE-MARK", "HIT-MARK", "AFTER-MARK"):
+        assert mark not in response.text
 
 
 async def test_filters_and_pagination(app_client, session) -> None:
@@ -121,11 +154,28 @@ async def test_detail_has_verdict_matches_and_events_without_full_values(
             "count": 2,
             "points": 40,
             "samples": ["**********17"],
+            "weight": 20,
+            "cap": 5,
+            "fragments": [{"before": "ИИН ", "hit": "**********17", "after": " в списке"}],
         }
     ]
     assert len(body["events"]) == 1
     assert body["events"][0]["dst_path"] == "E:\\salary.xlsx"
     assert "900101300017" not in response.text
+
+
+async def test_old_verdict_without_fragments_gives_empty_defaults(app_client, session) -> None:
+    await login_as(app_client, session, username="inc-old", role=UserRole.ADMIN)
+    agent = await enroll_agent(app_client, session, "api-old")
+    old = [
+        {"rule_key": "iin_bin", "rule_version_id": "v1", "count": 1, "points": 20, "samples": []}
+    ]
+    incident = await _flagged(session, agent.agent_id, matches=old)
+
+    body = (await app_client.get(f"/api/v1/incidents/{incident.id}")).json()
+
+    assert body["matches"][0]["fragments"] == []
+    assert body["matches"][0]["weight"] == 0 and body["matches"][0]["cap"] == 0
 
 
 async def test_unknown_incident_is_404(app_client, session) -> None:

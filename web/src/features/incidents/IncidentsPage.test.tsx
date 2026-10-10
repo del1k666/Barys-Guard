@@ -33,10 +33,17 @@ const DETAIL = {
   ...INCIDENT,
   verdict: { status: "flagged", score: 80, severity: "high" },
   matches: [
-    { rule_key: "iin_bin", count: 2, points: 60, samples: ["**********17", "**********42"] },
-    { rule_key: "card", count: 1, points: 20, samples: ["************1111"] },
-    { rule_key: "custom_rule", rule_title: "", count: 1, points: 5, samples: [] },
-    { rule_key: "custom_aa11bb22", rule_title: "Номер договора", count: 1, points: 15, samples: ["*****67"] },
+    {
+      rule_key: "iin_bin", count: 2, points: 40, weight: 20, cap: 5,
+      samples: ["**********17", "**********42"],
+      fragments: [
+        { before: "…сотрудник ", hit: "**********17", after: " принят" },
+        { before: "…и ", hit: "**********42", after: " тоже" },
+      ],
+    },
+    { rule_key: "card", count: 1, points: 20, weight: 20, cap: 4, samples: ["************1111"], fragments: [] },
+    { rule_key: "custom_rule", rule_title: "", count: 1, points: 5, weight: 5, cap: 3, samples: [], fragments: [] },
+    { rule_key: "custom_aa11bb22", rule_title: "Номер договора", count: 1, points: 15, weight: 15, cap: 2, samples: ["*****67"], fragments: [] },
   ],
   events: [
     {
@@ -188,13 +195,18 @@ describe("IncidentDetailPanel", () => {
     const dialog = await openPanel();
 
     expect(await within(dialog).findByText("Опасно")).toBeInTheDocument();
-    expect(within(dialog).getByText("ИИН/БИН")).toBeInTheDocument();
-    expect(within(dialog).getByText("Банковская карта")).toBeInTheDocument();
-    expect(within(dialog).getByText("custom_rule")).toBeInTheDocument();
-    expect(within(dialog).getByText("Номер договора")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("ИИН/БИН").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("Банковская карта").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("custom_rule").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("Номер договора").length).toBeGreaterThan(0);
     expect(within(dialog).queryByText("custom_aa11bb22")).not.toBeInTheDocument();
-    expect(within(dialog).getByText("**********17, **********42")).toBeInTheDocument();
-    expect(within(dialog).getByText("************1111")).toBeInTheDocument();
+    expect(within(dialog).getByText("сотрудник", { exact: false })).toBeInTheDocument();
+    expect(within(dialog).getByText("**********17")).toBeInTheDocument();
+    expect(within(dialog).getByText("20 × 2 = 40")).toBeInTheDocument();
+    expect(within(dialog).getByRole("img", { name: "Оценка 80 из 100" })).toBeInTheDocument();
+    // Ни одно правило не упёрлось в потолок.
+    expect(within(dialog).queryByText(/учтено не больше/)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/Набрано 80 из 100/)).toBeInTheDocument();
     expect(within(dialog).getByText("copy")).toBeInTheDocument();
     expect(within(dialog).getByText("E:\\отчёт.xlsx")).toBeInTheDocument();
     expect(within(dialog).getByText("cd".repeat(32))).toBeInTheDocument();
@@ -309,7 +321,7 @@ describe("IncidentDetailPanel", () => {
 
     await waitFor(() => expect(detailCalls).toBeGreaterThan(1));
     expect(await screen.findByText("Инцидент принят")).toBeInTheDocument();
-    expect(within(dialog).getByText("ИИН/БИН")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("ИИН/БИН").length).toBeGreaterThan(0);
     expect(within(dialog).queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
   });
 
@@ -323,5 +335,63 @@ describe("IncidentDetailPanel", () => {
     const dialog = await openPanel();
 
     expect(await within(dialog).findByRole("button", { name: "Повторить" })).toBeInTheDocument();
+  });
+
+  it("для правила без фрагментов объясняет, что файл проверен до обновления", async () => {
+    setup(incidentPage([INCIDENT]));
+    renderPage(<IncidentsPage />, route());
+    const dialog = await openPanel();
+
+    expect(
+      (await within(dialog).findAllByText("Фрагменты недоступны: файл проверен до обновления.")).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("показывает первые три фрагмента и открывает остальные по кнопке", async () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({ before: `до${i} `, hit: "**********17", after: ` после${i}` }));
+    mockApi({
+      "GET /auth/me": json(200, OPERATOR),
+      "GET /incidents": incidentPage([INCIDENT]),
+      [`GET /incidents/${ID}`]: json(200, {
+        ...DETAIL,
+        matches: [{ rule_key: "iin_bin", count: 9, points: 80, weight: 16, cap: 5, samples: [], fragments: many }],
+      }),
+    });
+    renderPage(<IncidentsPage />, route());
+    const dialog = await openPanel();
+
+    expect(await within(dialog).findAllByText("**********17")).toHaveLength(3);
+    expect(within(dialog).getByText("Показаны первые 5 из 9")).toBeInTheDocument();
+    expect(within(dialog).getByText("16 × 5 = 80")).toBeInTheDocument();
+    expect(within(dialog).getByText("учтено не больше 5 совпадений")).toBeInTheDocument();
+    const toggle = within(dialog).getByRole("button", { name: "Показать ещё" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    const list = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+    expect(list?.tagName).toBe("UL");
+    await userEvent.click(toggle);
+    expect(within(dialog).getAllByText("**********17")).toHaveLength(5);
+    expect(within(dialog).getByRole("button", { name: "Свернуть" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("совпадение старого вердикта без веса, потолка и фрагментов показывает только баллы", async () => {
+    mockApi({
+      "GET /auth/me": json(200, OPERATOR),
+      "GET /incidents": incidentPage([INCIDENT]),
+      [`GET /incidents/${ID}`]: json(200, {
+        ...DETAIL,
+        matches: [
+          { rule_key: "iin_bin", count: 4, points: 60, samples: ["**********17"] },
+          // Вес без потолка: формула «20 × 0» была бы неверной.
+          { rule_key: "card", count: 1, points: 20, weight: 20, samples: [] },
+        ],
+      }),
+    });
+    renderPage(<IncidentsPage />, route());
+    const dialog = await openPanel();
+
+    expect(await within(dialog).findByText("60")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/\d × \d/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/учтено не больше/)).not.toBeInTheDocument();
+    expect(within(dialog).getAllByText("Фрагменты недоступны: файл проверен до обновления.")).toHaveLength(2);
   });
 });

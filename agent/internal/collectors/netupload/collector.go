@@ -40,8 +40,10 @@ type Deps struct {
 	Stat        func(path string) (int64, error)
 	Identity    identity.Resolver
 	ProcessInfo func(pid uint32) map[string]any
-	Volumes     func() []volumes.Volume
-	Now         func() time.Time
+	// Family приводит PID к главному процессу приложения; nil — pid как есть.
+	Family  func(pid uint32) uint32
+	Volumes func() []volumes.Volume
+	Now     func() time.Time
 	// ReportEvery — как часто сообщать о потерянных событиях.
 	ReportEvery time.Duration
 	// RetryMin и RetryMax — пауза перед повторным запуском отказавшего источника:
@@ -54,12 +56,14 @@ type Deps struct {
 
 // Collector реализует events.Collector.
 type Collector struct {
-	deps    Deps
-	filter  *Filter
-	dns     *DNSCache
-	reads   *Reads
-	matcher *Matcher
-	dropped atomic.Uint64
+	deps     Deps
+	filter   *Filter
+	dns      *DNSCache
+	reads    *Reads
+	matcher  *Matcher
+	resolver *Resolver
+	family   *familyCache
+	dropped  atomic.Uint64
 }
 
 func New(deps Deps) *Collector {
@@ -89,8 +93,16 @@ func New(deps Deps) *Collector {
 	resolver := &Resolver{Catalog: NewCatalog(deps.Config.Services), DNS: dns}
 	return &Collector{
 		deps: deps, filter: NewFilter(deps.Config), dns: dns, reads: reads,
-		matcher: NewMatcher(deps.Config, reads, resolver),
+		matcher: NewMatcher(deps.Config, reads, resolver), resolver: resolver, family: familyFor(deps),
 	}
+}
+
+func familyFor(deps Deps) *familyCache {
+	resolve := deps.Family
+	if resolve == nil {
+		resolve = func(pid uint32) uint32 { return pid }
+	}
+	return newFamilyCache(resolve, deps.Now)
 }
 
 func statSize(path string) (int64, error) {
@@ -215,6 +227,9 @@ func (c *Collector) emitAgent(emit func(events.Envelope), action, severity strin
 }
 
 func (c *Collector) handle(ev Event, jobs chan<- Match) {
+	if ev.Kind == KindRead || ev.Kind == KindSend {
+		ev.PID = c.family.Root(ev.PID)
+	}
 	switch ev.Kind {
 	case KindDNS:
 		ttl := ev.TTL
@@ -222,16 +237,25 @@ func (c *Collector) handle(ev Event, jobs chan<- Match) {
 			ttl = dnsTTL
 		}
 		c.dns.Learn(ev.Names, ev.Addrs, ttl, ev.At)
+		slog.Debug("netupload: dns", "names", ev.Names, "addrs", ev.Addrs)
 	case KindRead:
 		if ev.Path == "" || !c.filter.PathOK(ev.Path) {
+			slog.Debug("netupload: чтение отклонено фильтром пути", "pid", ev.PID, "path", ev.Path)
 			return
 		}
 		size, err := c.deps.Stat(ev.Path)
 		if err != nil || !c.filter.SizeOK(size) {
+			slog.Debug("netupload: чтение отклонено по размеру", "pid", ev.PID, "path", ev.Path, "size", size, "error", err)
 			return
 		}
+		slog.Debug("netupload: чтение принято", "pid", ev.PID, "path", ev.Path, "size", size)
 		c.reads.Add(ev.PID, Read{Path: ev.Path, Size: size, At: ev.At})
 	case KindSend:
+		if len(c.reads.Recent(ev.PID, ev.At.Add(-c.deps.Config.Window), ev.At)) > 0 {
+			service, host, ok := c.resolver.Resolve(ev.Addr, ev.At)
+			slog.Debug("netupload: отправка процессом с недавними чтениями",
+				"pid", ev.PID, "addr", ev.Addr, "bytes", ev.Bytes, "service", service.Key, "host", host, "resolved", ok)
+		}
 		for _, match := range c.matcher.Observe(Send{PID: ev.PID, Addr: ev.Addr, Bytes: ev.Bytes, At: ev.At}) {
 			select {
 			case jobs <- match:
