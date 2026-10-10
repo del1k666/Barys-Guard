@@ -1812,8 +1812,23 @@ export interface components {
             count: number;
             /** Points */
             points: number;
+            /**
+             * Weight
+             * @default 0
+             */
+            weight: number;
+            /**
+             * Cap
+             * @default 0
+             */
+            cap: number;
             /** Samples */
             samples: string[];
+            /**
+             * Fragments
+             * @default []
+             */
+            fragments: components["schemas"]["MatchFragment"][];
         };
         /** IncidentPage */
         IncidentPage: {
@@ -1892,6 +1907,15 @@ export interface components {
             username: string;
             /** Password */
             password: string;
+        };
+        /** MatchFragment */
+        MatchFragment: {
+            /** Before */
+            before: string;
+            /** Hit */
+            hit: string;
+            /** After */
+            after: string;
         };
         /**
          * NetUploadCollectorConfig

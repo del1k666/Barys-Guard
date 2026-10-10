@@ -3,7 +3,6 @@ import { Link } from "react-router-dom";
 import type { IncidentDetail } from "../../api/types";
 import { Button } from "../../components/Button";
 import { Modal } from "../../components/Modal";
-import { Spinner } from "../../components/Spinner";
 import { ErrorState } from "../../components/States";
 import { IncidentStatusBadge, SeverityBadge, VerdictBadge } from "../../components/StatusBadge";
 import { Table } from "../../components/Table";
@@ -13,8 +12,11 @@ import { describeError } from "../../lib/errors";
 import { formatDateTime } from "../../lib/format";
 import page from "../../styles/page.module.css";
 import { Fact } from "../agents/Fact";
+import { Evidence } from "./Evidence";
 import styles from "./incidents.module.css";
 import { useIncident, useUpdateIncident } from "./queries";
+import { ScoreRing } from "./ScoreRing";
+import { WhyTriggered } from "./WhyTriggered";
 
 type Target = "acknowledged" | "closed";
 
@@ -26,7 +28,12 @@ export function IncidentDetailPanel({
   onClose: () => void;
 }) {
   return (
-    <Modal open={incidentId !== null} title={ru.incidents.detail.title} onClose={onClose}>
+    <Modal
+      open={incidentId !== null}
+      title={ru.incidents.detail.title}
+      onClose={onClose}
+      variant="drawer"
+    >
       {incidentId ? <Body incidentId={incidentId} /> : null}
     </Modal>
   );
@@ -41,7 +48,14 @@ function Body({ incidentId }: { incidentId: string }) {
     return <ErrorState error={incident.error} onRetry={() => void incident.refetch()} />;
   }
 
-  return <Spinner label={ru.common.loading} />;
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">{ru.common.loading}</span>
+      {[80, 60, 90, 50].map((width) => (
+        <div key={width} className="skeleton" style={{ width: `${width}%`, margin: "14px 0" }} />
+      ))}
+    </div>
+  );
 }
 
 function Detail({ incident }: { incident: IncidentDetail }) {
@@ -63,14 +77,48 @@ function Detail({ incident }: { incident: IncidentDetail }) {
 
   return (
     <>
-      <dl className={page.dl}>
-        <Fact label={t.severity}>
-          <SeverityBadge severity={incident.severity} />
-        </Fact>
-        <Fact label={t.score}>{incident.score}</Fact>
-        <Fact label={t.status}>
+      <div className={styles.head}>
+        <div>
+          <SeverityBadge severity={incident.severity} />{" "}
           <IncidentStatusBadge status={incident.status} />
-        </Fact>
+          <h3 className={styles.headTitle}>{incident.title}</h3>
+        </div>
+        <div className={styles.headActions}>
+          <ScoreRing score={incident.score} severity={incident.severity} />
+          {incident.status === "closed" ? null : (
+            <div className={styles.actions}>
+              {incident.status === "open" ? (
+                <Button
+                  variant="primary"
+                  loading={pending("acknowledged")}
+                  disabled={update.isPending}
+                  onClick={() => void change("acknowledged")}
+                >
+                  {ru.incidents.actions.acknowledge}
+                </Button>
+              ) : null}
+              <Button
+                loading={pending("closed")}
+                disabled={update.isPending}
+                onClick={() => void change("closed")}
+              >
+                {ru.incidents.actions.close}
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {incident.matches.length === 0 ? (
+        <p className={styles.muted}>{t.matchesEmpty}</p>
+      ) : (
+        <>
+          <WhyTriggered matches={incident.matches} score={incident.score} />
+          <Evidence matches={incident.matches} />
+        </>
+      )}
+
+      <dl className={page.dl}>
         <Fact label={t.agent}>
           <Link to={`/agents/${incident.agent_id}`}>{incident.hostname}</Link>
         </Fact>
@@ -92,32 +140,6 @@ function Detail({ incident }: { incident: IncidentDetail }) {
         </Fact>
       </dl>
 
-      <h3 className={page.sectionTitle}>{t.matches}</h3>
-      {incident.matches.length === 0 ? (
-        <p className={styles.muted}>{t.matchesEmpty}</p>
-      ) : (
-        <Table caption={t.matchesCaption}>
-          <thead>
-            <tr>
-              <th>{t.matchColumns.rule}</th>
-              <th>{t.matchColumns.count}</th>
-              <th>{t.matchColumns.points}</th>
-              <th>{t.matchColumns.samples}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {incident.matches.map((match) => (
-              <tr key={match.rule_key}>
-                <td>{ru.incidents.rules[match.rule_key] ?? (match.rule_title || match.rule_key)}</td>
-                <td>{match.count}</td>
-                <td>{match.points}</td>
-                <td className={styles.mono}>{match.samples.join(", ")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
-      )}
-
       <h3 className={page.sectionTitle}>{t.events}</h3>
       <Table caption={t.eventsCaption}>
         <thead>
@@ -137,28 +159,6 @@ function Detail({ incident }: { incident: IncidentDetail }) {
           ))}
         </tbody>
       </Table>
-
-      {incident.status === "closed" ? null : (
-        <div className={styles.actions}>
-          {incident.status === "open" ? (
-            <Button
-              variant="primary"
-              loading={pending("acknowledged")}
-              disabled={update.isPending}
-              onClick={() => void change("acknowledged")}
-            >
-              {ru.incidents.actions.acknowledge}
-            </Button>
-          ) : null}
-          <Button
-            loading={pending("closed")}
-            disabled={update.isPending}
-            onClick={() => void change("closed")}
-          >
-            {ru.incidents.actions.close}
-          </Button>
-        </div>
-      )}
     </>
   );
 }

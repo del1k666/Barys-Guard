@@ -7,7 +7,7 @@
   --text: #ececf0;
   --muted: #9b9ba6;
   --accent: #d4202f;
-  --accent-hover: #ee3b4a;
+  --accent-hover: #d92b3a;
   --accent-soft: rgba(212, 32, 47, 0.16);
   --on-accent: #ffffff;
   --link: #ff7b82;
@@ -180,6 +180,7 @@ h3 {
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
   }
 

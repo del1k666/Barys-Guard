@@ -25,7 +25,7 @@
 
 .mono {
   overflow-wrap: anywhere;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-family: var(--mono);
   font-size: 13px;
 }
 
@@ -37,4 +37,104 @@
   display: flex;
   gap: 8px;
   margin-top: 20px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headTitle {
+  margin: 8px 0 0;
+  font-size: 18px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.block {
+  margin-top: 22px;
+  animation: fade-up var(--dur-slow) var(--ease-out) both;
+}
+
+.blockTitle {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rules,
+.fragments {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rule {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.ruleHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ruleName {
+  font-weight: 600;
+}
+
+.bar {
+  height: 4px;
+  margin: 8px 0 4px;
+  border-radius: 2px;
+  background: var(--surface-2);
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.evidenceRule {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.fragment {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.hit {
+  padding: 1px 3px;
+  border-radius: 3px;
+  background: var(--accent-soft);
+  color: var(--link);
+  box-shadow: inset 0 0 0 1px rgba(212, 32, 47, 0.5);
 }

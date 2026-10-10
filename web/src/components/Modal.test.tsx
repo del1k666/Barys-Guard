@@ -68,4 +68,9 @@ describe("Modal", () => {
     await userEvent.tab(); // ок -> снова отмена
     expect(screen.getByRole("button", { name: "отмена" })).toHaveFocus();
   });
+
+  it("вариант drawer остаётся диалогом с ловушкой фокуса", () => {
+    render(<Modal open title="Панель" onClose={() => {}} variant="drawer"><button>Внутри</button></Modal>);
+    expect(screen.getByRole("dialog", { name: "Панель" })).toBeInTheDocument();
+  });
 });

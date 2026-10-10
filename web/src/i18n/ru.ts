@@ -432,6 +432,22 @@ export const ru = {
       matches: "Совпадения",
       matchesCaption: "Совпадения с правилами",
       matchesEmpty: "Совпадений нет",
+      why: {
+        title: "Почему сработало",
+        summary: (score: number) => `Набрано ${score} из 100. Порог инцидента — 20.`,
+        formula: (weight: number, count: number, cap: number) =>
+          `${weight} × ${Math.min(count, cap)}`,
+        points: (points: number) => `${points} балл.`,
+        capped: (cap: number) => `учтено не больше ${cap} совпадений`,
+      },
+      evidence: {
+        title: "Что нашли в документе",
+        none: "Фрагменты недоступны: файл проверен до обновления.",
+        more: "Показать ещё",
+        less: "Свернуть",
+        shown: (shown: number, total: number) => `Показаны первые ${shown} из ${total}`,
+        matches: (count: number) => `совпадений: ${count}`,
+      },
       events: "События",
       eventsCaption: "События инцидента",
       matchColumns: { rule: "Правило", count: "Число", points: "Баллы", samples: "Образцы" },

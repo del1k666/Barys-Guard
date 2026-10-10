@@ -9,12 +9,13 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  variant?: "dialog" | "drawer";
 }
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, title, onClose, children, footer }: ModalProps) {
+export function Modal({ open, title, onClose, children, footer, variant = "dialog" }: ModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   // Родитель обычно передаёт onClose стрелкой; если бы эффект зависел от
@@ -73,14 +74,14 @@ export function Modal({ open, title, onClose, children, footer }: ModalProps) {
 
   return createPortal(
     <div
-      className={styles.overlay}
+      className={`${styles.overlay} ${variant === "drawer" ? styles.drawerOverlay : ""}`}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) closeRef.current();
       }}
     >
       <div
         ref={dialogRef}
-        className={styles.dialog}
+        className={`${styles.dialog} ${variant === "drawer" ? styles.drawer : ""}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
