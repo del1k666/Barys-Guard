@@ -84,7 +84,7 @@ function Detail({ incident }: { incident: IncidentDetail }) {
           <h3 className={styles.headTitle}>{incident.title}</h3>
         </div>
         <div className={styles.headActions}>
-          <ScoreRing score={incident.score} severity={incident.severity} />
+          <ScoreRing score={incident.score} />
           {incident.status === "closed" ? null : (
             <div className={styles.actions}>
               {incident.status === "open" ? (

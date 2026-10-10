@@ -20,7 +20,7 @@ export function WhyTriggered({ matches, score }: { matches: IncidentMatch[]; sco
               <div className={styles.ruleHead}>
                 <span className={styles.ruleName}>{ruleName(match)}</span>
                 <span className={styles.mono}>
-                  {weight > 0 ? `${t.formula(weight, match.count, cap)} = ${match.points}` : match.points}
+                  {weight > 0 && cap > 0 ? `${t.formula(weight, match.count, cap)} = ${match.points}` : match.points}
                 </span>
               </div>
               <div className={styles.bar} aria-hidden>

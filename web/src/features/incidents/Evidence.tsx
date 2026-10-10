@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { IncidentMatch } from "../../api/types";
 import { Button } from "../../components/Button";
@@ -11,6 +11,7 @@ const FIRST = 3;
 function Rule({ match }: { match: IncidentMatch }) {
   const t = ru.incidents.detail.evidence;
   const [expanded, setExpanded] = useState(false);
+  const listId = useId();
   const fragments = match.fragments ?? [];
   const visible = expanded ? fragments : fragments.slice(0, FIRST);
   return (
@@ -23,7 +24,7 @@ function Rule({ match }: { match: IncidentMatch }) {
         <p className={styles.muted}>{t.none}</p>
       ) : (
         <>
-          <ul className={styles.fragments}>
+          <ul id={listId} className={styles.fragments}>
             {visible.map((fragment, index) => (
               <li key={index} className={styles.fragment}>
                 <span>{fragment.before}</span>
@@ -36,7 +37,11 @@ function Rule({ match }: { match: IncidentMatch }) {
             <span className={styles.muted}>{t.shown(fragments.length, match.count)}</span>
           ) : null}
           {fragments.length > FIRST ? (
-            <Button onClick={() => setExpanded((value) => !value)}>
+            <Button
+              aria-expanded={expanded}
+              aria-controls={listId}
+              onClick={() => setExpanded((value) => !value)}
+            >
               {expanded ? t.less : t.more}
             </Button>
           ) : null}

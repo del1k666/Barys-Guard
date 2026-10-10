@@ -431,15 +431,13 @@ export const ru = {
       sha256: "SHA-256 файла",
       verdict: "Вердикт",
       verdictScore: (score: number) => `оценка ${score}`,
-      matches: "Совпадения",
-      matchesCaption: "Совпадения с правилами",
+      scoreRing: (score: number) => `Оценка ${score} из 100`,
       matchesEmpty: "Совпадений нет",
       why: {
         title: "Почему сработало",
         summary: (score: number) => `Набрано ${score} из 100. Порог инцидента — 20.`,
         formula: (weight: number, count: number, cap: number) =>
           `${weight} × ${Math.min(count, cap)}`,
-        points: (points: number) => `${points} балл.`,
         capped: (cap: number) => `учтено не больше ${cap} совпадений`,
       },
       evidence: {
@@ -452,7 +450,6 @@ export const ru = {
       },
       events: "События",
       eventsCaption: "События инцидента",
-      matchColumns: { rule: "Правило", count: "Число", points: "Баллы", samples: "Образцы" },
       eventColumns: { time: "Время", action: "Действие", path: "Путь назначения" },
     },
     rules: {
