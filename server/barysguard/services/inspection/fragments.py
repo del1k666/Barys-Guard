@@ -159,36 +159,77 @@ def _visible(
 # каждая сторона не длиннее FRAGMENT_CONTEXT + 1 (с «…»). `scrub_digits` заменяет
 # число одним символом и тоже не удлиняет текст. Он работает до добавления «…»: край у
 # совпадения открыт всегда, внешний — когда есть обрез.
+#
+# Маски ищутся один раз в общем окне: контекст слева, совпадение и контекст справа.
+# Значение, пересекающее само совпадение, в окне одной стороны было бы разрезано и
+# не узнано детектором: его части слева и справа вместе с совпадением восстановили
+# бы значение. Поэтому такое значение не показывается ни с одной стороны: его часть в
+# зоне убирается и заменяется одним «…» у совпадения (убрано не меньше символа, так что
+# граница длины сохраняется). Само совпадение показывается как есть.
 
 
-def _clip_left(window: str, detectors: Sequence["Detector"], more_before: bool) -> str:
-    low = max(0, len(window) - FRAGMENT_CONTEXT)
-    visible, dropped = _visible(window, _mask_spans(window, detectors), low, len(window))
+def _straddling(
+    spans: Sequence[tuple[int, int, str]], hit_start: int, hit_end: int
+) -> list[tuple[int, int]]:
+    """Значения, пересекающие совпадение [hit_start, hit_end)."""
+    return [(start, end) for start, end, _ in spans if start < hit_end and end > hit_start]
+
+
+def _join(prefix: str, body: str, suffix: str) -> str:
+    # Обрез у края и скрытое значение у совпадения без текста между ними — одно «…».
+    if not body and prefix and suffix:
+        return _ELLIPSIS
+    return prefix + body + suffix
+
+
+def _clip_left(
+    window: str,
+    spans: Sequence[tuple[int, int, str]],
+    hit_start: int,
+    hit_end: int,
+    more_before: bool,
+) -> str:
+    low = max(0, hit_start - FRAGMENT_CONTEXT)
+    high = min([hit_start, *(start for start, _ in _straddling(spans, hit_start, hit_end))])
+    hidden = high < hit_start
+    high = max(high, low)
+    visible, dropped = _visible(window, spans, low, high)
     cut = low > 0 or dropped
     text = _collapse(visible)
+    suffix = _ELLIPSIS if hidden else ""
     if not (cut or more_before):
-        return scrub_digits(text, open_start=False, open_end=True)
+        return _join("", scrub_digits(text, open_start=False, open_end=True), suffix)
     if text.startswith(" "):
         text = text.lstrip()
     else:
         space = text.find(" ")
         text = text[space + 1 :] if space != -1 else ""
-    return _ELLIPSIS + scrub_digits(text, open_start=True, open_end=True)
+    return _join(_ELLIPSIS, scrub_digits(text, open_start=True, open_end=True), suffix)
 
 
-def _clip_right(window: str, detectors: Sequence["Detector"], more_after: bool) -> str:
-    high = min(len(window), FRAGMENT_CONTEXT)
-    visible, dropped = _visible(window, _mask_spans(window, detectors), 0, high)
+def _clip_right(
+    window: str,
+    spans: Sequence[tuple[int, int, str]],
+    hit_start: int,
+    hit_end: int,
+    more_after: bool,
+) -> str:
+    high = min(len(window), hit_end + FRAGMENT_CONTEXT)
+    low = max([hit_end, *(end for _, end in _straddling(spans, hit_start, hit_end))])
+    hidden = low > hit_end
+    low = min(low, high)
+    visible, dropped = _visible(window, spans, low, high)
     cut = high < len(window) or dropped
     text = _collapse(visible)
+    prefix = _ELLIPSIS if hidden else ""
     if not (cut or more_after):
-        return scrub_digits(text, open_start=True, open_end=False)
+        return _join(prefix, scrub_digits(text, open_start=True, open_end=False), "")
     if text.endswith(" "):
         text = text.rstrip()
     else:
         space = text.rfind(" ")
         text = text[:space] if space != -1 else ""
-    return scrub_digits(text, open_start=True, open_end=True) + _ELLIPSIS
+    return _join(prefix, scrub_digits(text, open_start=True, open_end=True), _ELLIPSIS)
 
 
 def build_fragment(
@@ -213,11 +254,15 @@ def build_fragment(
     значения, которое детектор мог бы не узнать. Защиты от обратного здесь нет.
     """
     left = max(0, start - history)
+    right = min(len(data), end + history)
+    window = data[left:right]
+    spans = _mask_spans(window, detectors)
     more_before = left > 0 or not at_doc_start
-    more_after = len(data) > end + history
+    more_after = len(data) > right
     hit = sample if masks_hits else _collapse(data[start:end])
+    hit_start, hit_end = start - left, end - left
     return {
-        "before": _clip_left(data[left:start], detectors, more_before),
+        "before": _clip_left(window, spans, hit_start, hit_end, more_before),
         "hit": hit,
-        "after": _clip_right(data[end : end + history], detectors, more_after),
+        "after": _clip_right(window, spans, hit_start, hit_end, more_after),
     }

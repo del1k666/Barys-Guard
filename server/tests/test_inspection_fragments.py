@@ -1,7 +1,10 @@
 """Фрагменты вокруг находок: маскирование контекста и обрезка краёв."""
 
+import random
 import re
 from collections.abc import Iterator
+
+import pytest
 
 from barysguard.services.inspection.detectors import (
     CardDetector,
@@ -277,3 +280,161 @@ def test_fragment_hides_numbers_at_the_hit_and_at_the_cut() -> None:
     assert fragment["before"] == "…начало 7 77 слово •-"
     # Короткие числа у совпадения и у обреза могли продолжаться — убраны; «7 77» в середине — нет.
     assert fragment["after"] == " • текст " + "б" * 67 + " •…"
+
+
+# --- Значение, пересекающее совпадение, не видно ни слева, ни справа ---------------------
+
+
+def _scan_fragments(text: str, size: int | None, detectors: list) -> dict[str, list]:
+    from barysguard.services.inspection.detectors import ContentScanner
+
+    scanner = ContentScanner(detectors)
+    step = size or len(text)
+    for index in range(0, len(text), step):
+        scanner.feed(text[index : index + step])
+    return {key: found.fragments for key, found in scanner.finish().items() if found.count}
+
+
+def _email_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        RegexDetector("email", r"[a-z.]+@company\.kz"),
+        DictionaryDetector("dict", ["company"]),
+    ]
+
+
+def _key_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        RegexDetector("key", r"[A-Z]{4}-[A-Z]{4}-[A-Z]{4}"),
+        RegexDetector("dom", r"-QRST-"),
+    ]
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_value_straddling_a_dictionary_hit_is_not_shown_around_it(size: int | None) -> None:
+    text = "Отправьте ivan.petrov@company.kz срочно, " + "слово " * 60
+
+    found = _scan_fragments(text, size, _email_detectors())
+
+    shown = repr(found)
+    assert "ivan.petrov" not in shown and "petrov" not in shown, shown
+    assert ".kz" not in shown.replace("**kz", ""), shown
+    [term] = found["dict"]
+    assert term["hit"] == "company"
+    assert term["before"] == "Отправьте …"
+    assert term["after"].startswith("… срочно, слово ")
+    assert term["after"].endswith("…")
+    assert len(term["after"]) <= FRAGMENT_CONTEXT + 1
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_value_straddling_a_regex_hit_is_not_shown_around_it(size: int | None) -> None:
+    text = "ключ WXYZ-QRST-MNOP выдан"
+
+    found = _scan_fragments(text, size, _key_detectors())
+
+    shown = repr(found)
+    assert "WXYZ" not in shown and "MNOP" not in shown, shown
+    [dom] = found["dom"]
+    assert dom == {"before": "ключ …", "hit": "****T-", "after": "… выдан"}
+
+
+_FUZZ_WORDS = ("договор", "сумма", "клиент", "адрес", "счёт", "дата", "и", "в")
+
+
+def _fuzz_value(rng: random.Random) -> str:
+    if rng.random() < 0.5:
+        name = "".join(rng.choice("abcdefghijklmnopqrstuvwxyz.") for _ in range(rng.randint(1, 14)))
+        return name + "@company.kz"
+    groups = rng.choice((3, 3, 6))
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    return "-".join("".join(rng.choice(letters) for _ in range(4)) for _ in range(groups))
+
+
+def _fuzz_text(rng: random.Random) -> str:
+    parts: list[str] = []
+    for _ in range(rng.randint(2, 7)):
+        roll = rng.random()
+        if roll < 0.15:
+            parts.append(" ".join(rng.choice(_FUZZ_WORDS) for _ in range(rng.randint(40, 90))))
+        elif roll < 0.6:
+            parts.append(" ".join(rng.choice(_FUZZ_WORDS) for _ in range(rng.randint(0, 5))))
+        # Значения вплотную друг к другу и к словам, без пробела, — тоже проверяются.
+        parts.append(_fuzz_value(rng))
+        if rng.random() < 0.3:
+            parts.append(_fuzz_value(rng))
+    joiners = (" ", " ", " ", "", ", ")
+    return "".join(part + rng.choice(joiners) for part in parts)
+
+
+def _fuzz_detectors() -> list:
+    from barysguard.services.inspection.regex_detector import RegexDetector
+
+    return [
+        *_email_detectors(),
+        RegexDetector("key", r"[A-Z]{4}-[A-Z]{4}-[A-Z]{4}"),
+        RegexDetector("dom", r"-[A-Z]{4}-"),
+        IinBinDetector(),
+    ]
+
+
+def _grams(text: str) -> set[str]:
+    return {text[index : index + 4] for index in range(len(text) - 3)}
+
+
+@pytest.mark.parametrize("size", [None, 1, 7])
+def test_fuzz_no_part_of_a_masked_value_is_shown_in_the_context(size: int | None) -> None:
+    rng = random.Random(20261010)  # noqa: S311 - воспроизводимый перебор, не секрет
+    for case in range(120):
+        text = _fuzz_text(rng)
+        detectors = _fuzz_detectors()
+        secret: set[str] = set()
+        for detector in detectors:
+            if detector.masks_hits:
+                for sample, start, end in detector.find(text, 0, len(text)):
+                    if sample:
+                        secret |= _grams(text[start:end])
+
+        found = _scan_fragments(text, size, detectors)
+
+        for key, fragments in found.items():
+            for fragment in fragments:
+                for side in ("before", "after"):
+                    leaked = _grams(fragment[side]) & secret
+                    assert not leaked, (case, key, side, fragment, text)
+
+
+def _stub_fragment(text: str, hit: str, *spans: tuple[str, int, int]) -> dict[str, str]:
+    # Текст короче окна и в начале документа: позиции окна совпадают с позициями текста.
+    start = text.index(hit)
+    return build_fragment(text, start, start + len(hit), hit, False, [_Span(*spans)], True)
+
+
+def test_value_touching_the_hit_is_masked_not_hidden() -> None:
+    text = "раз AAAAhitBBBB два"
+
+    fragment = _stub_fragment(text, "hit", ("**AA", 4, 8), ("**BB", 11, 15))
+
+    assert fragment == {"before": "раз **AA", "hit": "hit", "after": "**BB два"}
+
+
+def test_values_straddling_both_edges_of_the_hit_are_hidden_on_both_sides() -> None:
+    text = "раз AAAAhitBBBB два"
+
+    fragment = _stub_fragment(text, "hit", ("**AA", 4, 9), ("**BB", 10, 15))
+
+    assert fragment == {"before": "раз …", "hit": "hit", "after": "… два"}
+
+
+def test_value_straddling_the_hit_and_the_zone_edge_leaves_one_marker() -> None:
+    lead = "н" * 150 + " "
+    text = lead + "V" * 100 + "hit" + " конец"
+    start = len(lead)
+
+    fragment = _stub_fragment(text, "hit", ("**VV", start, start + 101))
+
+    assert fragment["before"] == "…"
+    assert fragment["after"] == " конец"
