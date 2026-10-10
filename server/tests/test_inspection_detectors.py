@@ -497,3 +497,156 @@ def test_short_masks_never_leak_at_any_gap(side: str) -> None:
         for finding in found.values():
             for fragment in finding.fragments:
                 _assert_only_masks_show_digits(fragment)
+
+
+# Разделители, которые склеивают цифры в одно число для проверки фрагментов.
+_JOINER = (
+    r"["
+    r"\s\-\u2010-\u2015\u2212\ufe58\ufe63\uff0d\u00ad\u180e\u200b-\u200f\u2060-\u2064\ufeff"
+    r".,/\\_()']"
+)
+_RUN = re.compile(rf"\d(?:{_JOINER}*\d)*")
+
+
+def _assert_no_open_numbers(fragment: dict[str, str]) -> None:
+    """Инвариант фрагмента, не зависящий от детекторов.
+
+    В before/after не бывает числа из пяти и больше цифр (цифры могут быть разделены
+    пробелами, дефисами и т. п.). Короткое число допустимо, только если оно не касается
+    края: ни совпадения (конец before, начало after), ни обреза «…» — у края число могло
+    продолжаться. Хвосты наших масок (`*` и до четырёх цифр) — такие же короткие числа.
+    """
+    from barysguard.services.inspection.fragments import FRAGMENT_CONTEXT
+
+    edge = re.compile(rf"{_JOINER}*")
+    for name in ("before", "after"):
+        side = fragment[name]
+        assert len(side) <= FRAGMENT_CONTEXT + 1, fragment
+        for match in _RUN.finditer(side):
+            digits = len(re.findall(r"\d", match.group()))
+            assert digits < 5, (match.group(), fragment)
+            head, tail = side[: match.start()], side[match.end() :]
+            if name == "before":
+                touches_hit = edge.fullmatch(tail)
+                touches_cut = head.startswith("…") and edge.fullmatch(head[1:])
+            else:
+                touches_hit = edge.fullmatch(head)
+                touches_cut = tail.endswith("…") and edge.fullmatch(tail[:-1])
+            assert not touches_hit and not touches_cut, (match.group(), fragment)
+
+
+# Повторы ревью: карта, найденная в полном тексте, не находится в окне маскирования,
+# потому что совпадения карт сцепляются (ложная карта у края окна съедает первую цифру
+# настоящей), и её цифры видны в контексте ИИН.
+CHAINED_CARDS = [
+    "x" * 200
+    + " 22 213 251232-4316 4  2-2-2 1 1-7-2 9 26 5 9-0-2-47 516279183-573832 6 4 0-84 924"
+    + " 812092  0532-35 "
+    + "x" * 48
+    + f" {IIN_DRIFT} "
+    + "x" * 200,
+    "x" * 200
+    + " 4 40 22 2 0 7 5 1-7 5-87 62 8 2 2 0 0 3-7 032 6 8038 6 4 07845-8627 2 2 2 1 3 9 5 8"
+    + " 5 1-1 6 2 3-1-6 "
+    + "x" * 54
+    + f" {IIN_DRIFT} "
+    + "x" * 200,
+]
+
+
+@pytest.mark.parametrize("case", [0, 1])
+@pytest.mark.parametrize("size", [None, 1, 7, 50, 200, 1000])
+def test_values_missed_in_the_window_are_not_shown(case: int, size: int | None) -> None:
+    text = CHAINED_CARDS[case]
+
+    found = _scan_chunks(text, size or len(text), IinBinDetector(), CardDetector())
+
+    assert found["iin_bin"].fragments
+    for finding in found.values():
+        for fragment in finding.fragments:
+            _assert_no_open_numbers(fragment)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        # ИИН (или БИН) внутри карты: в окне карта не находится, её голова касается совпадения.
+        " ж ж 22-0-090746363219 0-04172 ж ",
+        # 19-значная Visa, кончающаяся ИИН: семь первых цифр стоят вплотную к ИИН.
+        " ж 4 0 0 0 0 0 2-" + IIN_DRIFT + " ж ",
+    ],
+)
+@pytest.mark.parametrize("size", [None, 1, 7, 50])
+def test_head_of_a_value_overlapping_the_hit_is_not_shown(value: str, size: int | None) -> None:
+    text = "x" * 200 + value + "x" * 200
+
+    found = _scan_chunks(text, size or len(text), IinBinDetector(), CardDetector())
+
+    assert found["iin_bin"].fragments
+    for finding in found.values():
+        for fragment in finding.fragments:
+            _assert_no_open_numbers(fragment)
+
+
+@pytest.mark.parametrize("separator", ["\u00a0", "\t", "\u2028", "  ", "\u2009", "\u200b"])
+@pytest.mark.parametrize("size", [None, 7])
+def test_card_with_unusual_separators_is_not_shown(separator: str, size: int | None) -> None:
+    card = separator.join(VISA[index : index + 4] for index in range(0, 16, 4))
+    text = "x" * 200 + f" ж {card} ж {IIN_DRIFT} ж {card} ж " + "x" * 200
+
+    found = _scan_chunks(text, size or len(text), IinBinDetector(), CardDetector())
+
+    [iin] = found["iin_bin"].fragments
+    _assert_no_open_numbers(iin)
+    assert "1111" not in iin["before"] + iin["after"]
+
+
+_FUZZ_SEPARATORS = ["", "", "", " ", " ", "-", "  ", "\u00a0", "\t", "\n", "\u2013", "\u200b"]
+
+
+def _fuzz_card(rng) -> str:
+    prefix = rng.choice(["4", "51", "55", "2200", "2221", "37"])
+    length = 15 if prefix == "37" else rng.choice([13, 16, 19]) if prefix == "4" else 16
+    body = prefix + "".join(rng.choice("0123456789") for _ in range(length - len(prefix) - 1))
+    return next(body + check for check in "0123456789" if luhn_ok(body + check))
+
+
+def _fuzz_number(rng, digits: str) -> str:
+    weight = rng.random()
+    out = digits[0]
+    for char in digits[1:]:
+        out += rng.choice(_FUZZ_SEPARATORS) if rng.random() < weight else ""
+        out += char
+    return out
+
+
+def _fuzz_region(rng) -> str:
+    parts = []
+    for _ in range(rng.randint(2, 7)):
+        if rng.random() < 0.6:
+            digits = _fuzz_card(rng)
+        else:
+            digits = "".join(rng.choice("0123456789") for _ in range(rng.randint(1, 13)))
+        parts.append(_fuzz_number(rng, digits))
+        parts.append(rng.choice([" ", "-", " ", "", "  ", " ж ", "\u00a0"]))
+    return "".join(parts)
+
+
+def test_random_numbers_around_a_hit_never_show_open_digits() -> None:
+    """Свойство на случайных данных: группы цифр с разными разделителями вокруг ИИН."""
+    import random
+
+    rng = random.Random(20261010)  # noqa: S311 - воспроизводимые данные теста, не криптография
+    for _ in range(2000):
+        left, right = _fuzz_region(rng), _fuzz_region(rng)
+        text = (
+            "x" * rng.randint(0, 200)
+            + f" {left}{'x' * rng.randint(0, 90)} {IIN_DRIFT} {'x' * rng.randint(0, 90)}{right} "
+            + "x" * rng.randint(0, 200)
+        )
+        for size in (len(text), 7):
+            found = _scan_chunks(text, size, IinBinDetector(), CardDetector())
+            assert found["iin_bin"].fragments, text
+            for finding in found.values():
+                for fragment in finding.fragments:
+                    _assert_no_open_numbers(fragment)

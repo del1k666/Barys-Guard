@@ -217,3 +217,63 @@ def test_masks_are_never_longer_than_their_values() -> None:
         if detector.masks_hits:
             for sample, start, end in detector.find(text, 0, len(text)):
                 assert len(sample) <= end - start, (detector.key, sample)
+
+
+def _scrub(text: str, open_start: bool = False, open_end: bool = False) -> str:
+    from barysguard.services.inspection.fragments import scrub_digits
+
+    return scrub_digits(text, open_start=open_start, open_end=open_end)
+
+
+def test_scrubber_keeps_mask_tails_and_short_numbers() -> None:
+    text = "карта ****1111 и ИИН **********07, дом 12, кв 1234"
+
+    assert _scrub(text) == text
+
+
+def test_scrubber_removes_five_or_more_digits_with_any_separators() -> None:
+    assert _scrub("а 12345 б") == "а • б"
+    assert _scrub("а 1234 б") == "а 1234 б"
+    assert _scrub("а 1 2 3 4 б") == "а 1 2 3 4 б"
+    assert _scrub("а 1 2 3 4 5 б") == "а • б"
+    assert _scrub("а 12-34–56 б") == "а • б"
+    assert _scrub("а 12\u00a034\u20285\t6  7 б") == "а • б"
+    assert _scrub("а 4111\u200b1111\u200b1111\u200b1111 б") == "а • б"
+    assert _scrub("а 4111.1111/1111_1111 б") == "а • б"
+
+
+def test_scrubber_removes_plain_digits_next_to_a_mask_tail() -> None:
+    # Хвост маски вместе с соседними цифрами — уже пять цифр: убирается весь отрезок.
+    assert _scrub("а ****1111 2 б") == "а ****• б"
+    assert _scrub("а **********07-123 б") == "а **********• б"
+    # Цифры вплотную перед маской — голова значения, начало которого не нашлось.
+    assert _scrub("а 12****3456 б") == "а •****3456 б"
+
+
+def test_scrubber_removes_any_digits_touching_an_open_edge() -> None:
+    assert _scrub("12 3 слово", open_start=True) == "• слово"
+    assert _scrub("- 1 слово", open_start=True) == "- • слово"
+    assert _scrub("слово 22-0-", open_end=True) == "слово •-"
+    assert _scrub("слово ****1111 ", open_end=True) == "слово ****• "
+    # Закрытый край ничего не меняет.
+    assert _scrub("12 3 слово 22-0-") == "12 3 слово 22-0-"
+
+
+def test_scrubber_never_lengthens_text() -> None:
+    for text in ("1", "1 2 3 4 5 6", "x9", "****1111 2", "1-2-3"):
+        for flags in ((False, False), (True, True)):
+            assert len(_scrub(text, *flags)) <= len(text)
+
+
+def test_fragment_hides_numbers_at_the_hit_and_at_the_cut() -> None:
+    # Справа видны 80 исходных символов: « 3 текст », 67 «б» и « 12 »; дальше « 34…».
+    text = (
+        "а" * 200 + " начало 7 77 слово 1 2-" + IIN + " 3 текст " + "б" * 67 + " 12 34" + "в" * 200
+    )
+    start = text.index(IIN)
+
+    fragment = build_fragment(text, start, start + len(IIN), "*" * 10 + "17", True, DETECTORS, True)
+
+    assert fragment["before"] == "…начало 7 77 слово •-"
+    # Короткие числа у совпадения и у обреза могли продолжаться — убраны; «7 77» в середине — нет.
+    assert fragment["after"] == " • текст " + "б" * 67 + " •…"
