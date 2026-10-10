@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { ru } from "../i18n/ru";
 import styles from "./Modal.module.css";
 
 interface ModalProps {
@@ -87,9 +88,27 @@ export function Modal({ open, title, onClose, children, footer, variant = "dialo
         aria-labelledby={titleId}
         tabIndex={-1}
       >
-        <h2 id={titleId} className={styles.title}>
-          {title}
-        </h2>
+        {variant === "drawer" ? (
+          // На узком экране панель занимает всё окно и нажать мимо неё нельзя.
+          <div className={styles.header}>
+            <h2 id={titleId} className={styles.title}>
+              {title}
+            </h2>
+            <button
+              type="button"
+              className={styles.close}
+              aria-label={ru.common.closePanel}
+              title={ru.common.closePanel}
+              onClick={() => closeRef.current()}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+        ) : (
+          <h2 id={titleId} className={styles.title}>
+            {title}
+          </h2>
+        )}
         <div className={styles.body}>{children}</div>
         {footer ? <div className={styles.footer}>{footer}</div> : null}
       </div>

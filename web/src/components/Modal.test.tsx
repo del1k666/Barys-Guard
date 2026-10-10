@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { ru } from "../i18n/ru";
 import { Modal } from "./Modal";
 
 function Harness() {
@@ -69,8 +70,37 @@ describe("Modal", () => {
     expect(screen.getByRole("button", { name: "отмена" })).toHaveFocus();
   });
 
-  it("вариант drawer остаётся диалогом с ловушкой фокуса", () => {
-    render(<Modal open title="Панель" onClose={() => {}} variant="drawer"><button>Внутри</button></Modal>);
-    expect(screen.getByRole("dialog", { name: "Панель" })).toBeInTheDocument();
+  it("вариант drawer остаётся диалогом и рисуется панелью", () => {
+    render(
+      <Modal open title="Панель" onClose={() => {}} variant="drawer">
+        <button>Внутри</button>
+      </Modal>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Панель" });
+    expect(dialog.className).toMatch(/drawer/);
+  });
+
+  it("у панели есть видимая кнопка закрытия, она вызывает onClose", async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal open title="Панель" onClose={onClose} variant="drawer">
+        <p>текст</p>
+      </Modal>,
+    );
+
+    const button = screen.getByRole("button", { name: ru.common.closePanel });
+    expect(button).toHaveTextContent("×");
+    await userEvent.click(button);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("у обычного окна кнопки закрытия панели нет", async () => {
+    render(<Harness />);
+    await userEvent.click(screen.getByRole("button", { name: "открыть" }));
+
+    expect(screen.getByRole("dialog").className).not.toMatch(/drawer/);
+    expect(screen.queryByRole("button", { name: ru.common.closePanel })).not.toBeInTheDocument();
   });
 });

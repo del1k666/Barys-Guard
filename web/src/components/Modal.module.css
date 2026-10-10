@@ -56,3 +56,39 @@
   border-width: 0 0 0 1px;
   animation: slide-in-right var(--dur-mid) var(--ease-out);
 }
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header .title {
+  flex: 1;
+  min-width: 0;
+}
+
+.close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 12px 12px 0 0;
+  padding: 0;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.close:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
