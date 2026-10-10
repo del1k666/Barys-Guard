@@ -91,7 +91,9 @@ export function Shell() {
       </aside>
 
       <main className={styles.content}>
-        <Outlet />
+        <div key={location.pathname} className={styles.page}>
+          <Outlet />
+        </div>
       </main>
     </div>
   );

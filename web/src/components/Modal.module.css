@@ -18,6 +18,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  animation: pop-in var(--dur-mid) var(--ease-out);
 }
 
 .title {

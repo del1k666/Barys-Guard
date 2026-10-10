@@ -10,9 +10,11 @@
     "test": "vitest run",
     "typecheck": "tsc -b --noEmit",
     "types": "openapi-typescript ../api/gateway-v1.yaml -o src/api/schema.d.ts",
-    "licenses": "license-checker-rseidelsohn --production --excludePackages barysguard-console@0.1.0 --onlyAllow \"MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;CC0-1.0;Python-2.0\" --summary"
+    "licenses": "license-checker-rseidelsohn --production --excludePackages barysguard-console@0.1.0 --onlyAllow \"MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;CC0-1.0;Python-2.0;OFL-1.1\" --summary"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@tanstack/react-query": "^5.62.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

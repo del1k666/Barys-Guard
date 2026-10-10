@@ -35,7 +35,7 @@ const SEVERITY_TONES: Record<string, Tone> = {
   low: "info",
   medium: "warn",
   high: "danger",
-  critical: "danger",
+  critical: "critical",
 };
 
 export function SeverityBadge({ severity }: { severity: string }) {
